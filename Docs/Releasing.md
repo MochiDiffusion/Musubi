@@ -2,7 +2,6 @@
 
 ## One-time publication requirements
 
-- Choose and commit an open-source license.
 - Create the public GitHub repository and set it as `origin`.
 - Confirm the repository name and default branch are `Musubi` and `main`.
 - Enable the GitHub Actions workflow and branch protection if desired.
@@ -31,4 +30,3 @@
 
 Swift Package Manager derives the package version from Git tags; no version
 number belongs in `Package.swift`.
-

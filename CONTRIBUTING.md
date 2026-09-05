@@ -18,3 +18,5 @@ Format conventions change independently of Musubi. New source support should
 be based on observed files or an authoritative upstream implementation, and
 limitations should be documented rather than hidden behind guessed values.
 
+By contributing, you agree that your contribution will be licensed under the
+GNU General Public License v3 used by this repository.

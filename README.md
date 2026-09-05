@@ -92,3 +92,7 @@ The public API is intentionally small in 0.1 and may evolve before 1.0.
 - [Ecosystem research](Docs/Research.md)
 - [Release process](Docs/Releasing.md)
 - [Contributing](CONTRIBUTING.md)
+
+## License
+
+Musubi is available under the [GNU General Public License v3](LICENSE).

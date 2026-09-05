@@ -56,8 +56,8 @@ what Musubi needs, even though the public API should be idiomatic Swift.
 | --- | --- |
 | [`draw-things-community`](https://github.com/drawthingsai/draw-things-community) | The official public Draw Things repository is the best upstream source for configuration data models and enums. It does not currently expose the complete app or a public metadata-format contract, so exported files remain essential evidence. |
 | [`DrawThingsStudio`](https://github.com/IngoDuesentrieb/DrawThingsStudio) | Contains a Swift PNG metadata parser for Draw Things, A1111, and ComfyUI. It is application code rather than a package and uses simplified parsing and ComfyUI selection heuristics. It proves the basic native approach is practical, but is not a robust foundation. |
-| [`drawthings-py`](https://github.com/kcjerrell/drawthings-py) | Its PNG writer documents the current Draw Things-shaped XMP packet and the large `v2` configuration object. It is GPL-3.0, so treat it as observational evidence rather than code to port into a permissively licensed library. |
-| [`comfyui-cyberdelia-metadata`](https://github.com/cyberdeliaAI/comfyui-cyberdelia-metadata) | A current GPL-3.0 ComfyUI save-node implementation aimed at Civitai-compatible metadata across complicated workflows and custom nodes. Useful for test cases, but not source to copy unless Musubi adopts a compatible license. |
+| [`drawthings-py`](https://github.com/kcjerrell/drawthings-py) | Its PNG writer documents the current Draw Things-shaped XMP packet and the large `v2` configuration object. It is GPL-3.0; use it as supporting evidence while keeping Musubi's implementation independently fixture-led. |
+| [`comfyui-cyberdelia-metadata`](https://github.com/cyberdeliaAI/comfyui-cyberdelia-metadata) | A current GPL-3.0 ComfyUI save-node implementation aimed at Civitai-compatible metadata across complicated workflows and custom nodes. Useful for test scenarios and behavioral comparison. |
 | [`civitai-metadata-studio`](https://github.com/chriscollins500/civitai-metadata-studio) | Browser tool for inspecting and repairing Civitai metadata. Its focus on payload preservation, AIR/hash ordering, and graph-aware ComfyUI extraction is useful design evidence. |
 
 ## What the formats actually look like
@@ -176,7 +176,7 @@ unverified unless signatures and trust chains are actually validated.
 
 ## Licensing note
 
-The strongest reusable references above are MIT licensed, which is friendly to
-a permissive Swift package. GPL projects can inform test scenarios and observed
-wire-format facts, but copying their implementation would constrain the
-library's license. A clean fixture-led implementation avoids that ambiguity.
+Musubi is licensed under GPLv3. Some behavioral references above are MIT and
+some are GPL-3.0, but the implementation should remain fixture-led rather than
+copied from any one project. This keeps code provenance clear and makes observed
+wire behavior, not another parser's assumptions, the compatibility contract.
