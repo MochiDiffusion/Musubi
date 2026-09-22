@@ -3,6 +3,13 @@
 Musubi follows [Semantic Versioning](https://semver.org/). Changes before 1.0
 may include source-breaking API refinements and will be called out here.
 
+## 0.1.1 - 2026-09-22
+
+### Fixed
+
+- Treat PNG pixel and unrelated chunk payloads as opaque during metadata
+  inspection, avoiding size-dependent CRC work.
+
 ## 0.1.0 - 2026-09-05
 
 ### Added
@@ -19,4 +26,3 @@ may include source-breaking API refinements and will be called out here.
 - `musubi-inspect` command-line development tool.
 - Synthetic Swift Testing coverage for the primary codecs and container error
   handling.
-

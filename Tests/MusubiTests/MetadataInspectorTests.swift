@@ -217,6 +217,23 @@ struct MetadataInspectorTests {
         #expect(inspection.diagnostics.count == 1)
     }
 
+    @Test("PNG pixel data is opaque to metadata inspection")
+    func pngPixelDataIsOpaque() throws {
+        let image = PNGTestImage.make(
+            width: 16,
+            height: 16,
+            chunks: [],
+            imageData: Data(repeating: 0xA5, count: 1_024),
+            corruptImageDataCRC: true,
+            trailingChunks: [PNGTestImage.text(keyword: "Description", text: "after pixels")]
+        )
+
+        let inspection = try MetadataInspector.inspect(image)
+
+        #expect(inspection.payloads.first?.text == "after pixels")
+        #expect(inspection.diagnostics.isEmpty)
+    }
+
     @Test("Compressed PNG text carriers are decoded")
     func compressedPNGText() throws {
         let image = PNGTestImage.make(
@@ -251,7 +268,14 @@ private enum PNGTestImage {
         let corruptCRC: Bool
     }
 
-    static func make(width: UInt32, height: UInt32, chunks: [Chunk]) -> Data {
+    static func make(
+        width: UInt32,
+        height: UInt32,
+        chunks: [Chunk],
+        imageData: Data = Data(),
+        corruptImageDataCRC: Bool = false,
+        trailingChunks: [Chunk] = []
+    ) -> Data {
         var image = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
         var header = Data()
         header.appendBigEndian(width)
@@ -263,7 +287,12 @@ private enum PNGTestImage {
                 chunk(type: item.type, data: item.data, corruptCRC: item.corruptCRC)
             )
         }
-        image.append(chunk(type: "IDAT", data: Data()))
+        image.append(chunk(type: "IDAT", data: imageData, corruptCRC: corruptImageDataCRC))
+        for item in trailingChunks {
+            image.append(
+                chunk(type: item.type, data: item.data, corruptCRC: item.corruptCRC)
+            )
+        }
         image.append(chunk(type: "IEND", data: Data()))
         return image
     }

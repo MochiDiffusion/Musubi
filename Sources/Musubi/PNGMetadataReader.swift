@@ -24,20 +24,17 @@ enum PNGMetadataReader {
             let (chunkEnd, overflow) = offset.addingReportingOverflow(12 + length)
             guard !overflow, chunkEnd <= data.count,
                 let typeData = reader.bytes(in: offset + 4..<offset + 8),
-                let chunkData = reader.bytes(in: offset + 8..<offset + 8 + length),
                 let expectedCRC = reader.uint32(at: offset + 8 + length, endian: .big)
             else {
                 throw MetadataInspectionError.malformedContainer("Truncated PNG chunk")
             }
 
             let type = String(data: typeData, encoding: .ascii) ?? "????"
-            if CRC32.checksum(type: typeData, payload: chunkData) != expectedCRC {
-                diagnostics.append(.init(severity: .warning, message: "PNG \(type) chunk has an invalid CRC"))
-            }
+            let payloadRange = offset + 8..<offset + 8 + length
 
             switch type {
             case "IHDR":
-                guard length == 13,
+                guard length == 13, let chunkData = reader.bytes(in: payloadRange),
                     let width = BinaryReader(data: chunkData).uint32(at: 0, endian: .big),
                     let height = BinaryReader(data: chunkData).uint32(at: 4, endian: .big),
                     let widthInt = Int(exactly: width),
@@ -47,6 +44,10 @@ enum PNGMetadataReader {
                 else {
                     throw MetadataInspectionError.malformedContainer("Invalid PNG dimensions")
                 }
+                appendCRCDiagnostic(
+                    type: type, typeData: typeData, payload: chunkData,
+                    expectedCRC: expectedCRC, to: &diagnostics
+                )
                 dimensions = PixelDimensions(width: widthInt, height: heightInt)
             case "tEXt", "zTXt", "iTXt":
                 inspectedMetadataBytes += length
@@ -54,6 +55,13 @@ enum PNGMetadataReader {
                     throw MetadataInspectionError.metadataLimitExceeded(
                         "PNG metadata exceeds \(metadataByteLimit) bytes")
                 }
+                guard let chunkData = reader.bytes(in: payloadRange) else {
+                    throw MetadataInspectionError.malformedContainer("Truncated PNG \(type) chunk")
+                }
+                appendCRCDiagnostic(
+                    type: type, typeData: typeData, payload: chunkData,
+                    expectedCRC: expectedCRC, to: &diagnostics
+                )
                 do {
                     payloads.append(try decodeTextChunk(type: type, data: chunkData))
                 } catch let error as MetadataInspectionError {
@@ -65,6 +73,13 @@ enum PNGMetadataReader {
                     throw MetadataInspectionError.metadataLimitExceeded(
                         "PNG metadata exceeds \(metadataByteLimit) bytes")
                 }
+                guard let chunkData = reader.bytes(in: payloadRange) else {
+                    throw MetadataInspectionError.malformedContainer("Truncated PNG eXIf chunk")
+                }
+                appendCRCDiagnostic(
+                    type: type, typeData: typeData, payload: chunkData,
+                    expectedCRC: expectedCRC, to: &diagnostics
+                )
                 payloads.append(.init(kind: .pngExif, data: chunkData))
                 payloads.append(contentsOf: exifTextPayloads(in: chunkData))
             case "IEND":
@@ -84,6 +99,17 @@ enum PNGMetadataReader {
         }
 
         throw MetadataInspectionError.malformedContainer("PNG has no IEND chunk")
+    }
+
+    private static func appendCRCDiagnostic(
+        type: String,
+        typeData: Data,
+        payload: Data,
+        expectedCRC: UInt32,
+        to diagnostics: inout [MetadataDiagnostic]
+    ) {
+        guard CRC32.checksum(type: typeData, payload: payload) != expectedCRC else { return }
+        diagnostics.append(.init(severity: .warning, message: "PNG \(type) chunk has an invalid CRC"))
     }
 
     private static func decodeTextChunk(type: String, data: Data) throws -> EmbeddedMetadataPayload {
