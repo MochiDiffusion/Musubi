@@ -3,7 +3,8 @@ import Foundation
 enum A1111Codec {
     static func decode(_ payloads: [EmbeddedMetadataPayload]) -> CodecOutput {
         var output = CodecOutput()
-        let civitaiMarkerPresent = payloads.contains {
+        // Images from Civitai's own generator carry an Exif Artist of "ai".
+        let civitaiArtistPresent = payloads.contains {
             $0.keyword == "Artist" && $0.text?.lowercased() == "ai"
         }
 
@@ -13,17 +14,23 @@ enum A1111Codec {
                 let parsed = parse(text)
             else { continue }
 
-            let source: GenerationSource = parsed.isCivitai || civitaiMarkerPresent ? .civitai : .automatic1111
             output.interpretations.append(
-                .init(source: source, payloadIndices: [index], generations: [parsed.summary])
+                .init(
+                    format: .automatic1111,
+                    producer: parsed.producer ?? (civitaiArtistPresent ? civitaiProducer : nil),
+                    payloadIndices: [index],
+                    generations: [parsed.summary]
+                )
             )
         }
         return output
     }
 
+    private static let civitaiProducer = MetadataProducer(name: "Civitai")
+
     private struct ParsedParameters {
         let summary: GenerationRecord
-        let isCivitai: Bool
+        let producer: MetadataProducer?
     }
 
     private static func parse(_ text: String) -> ParsedParameters? {
@@ -48,10 +55,8 @@ enum A1111Codec {
         let values = detailsValues(details)
         var resources = civitaiResources(values["Civitai resources"])
         if let model = values["Model"]?.nonEmpty {
-            resources.insert(
-                .init(kind: .checkpoint, name: model, hash: values["Model hash"]?.nonEmpty),
-                at: 0
-            )
+            let hashes = values["Model hash"]?.nonEmpty.map { [modelHash($0)] } ?? []
+            resources.insert(.init(kind: .checkpoint, name: model, hashes: hashes), at: 0)
         }
 
         let summary = GenerationRecord(
@@ -61,16 +66,50 @@ enum A1111Codec {
             sampler: values["Sampler"]?.nonEmpty,
             scheduler: values["Schedule type"]?.nonEmpty,
             steps: values["Steps"].flatMap(Int.init),
-            guidance: values["CFG scale"].flatMap(Double.init),
+            cfgScale: values["CFG scale"].flatMap(Double.init),
             seed: values["Seed"]?.nonEmpty,
             dimensions: parseDimensions(values["Size"]),
             denoise: values["Denoising strength"].flatMap(Double.init),
             resources: resources
         )
-        return ParsedParameters(
-            summary: summary,
-            isCivitai: values["Civitai resources"] != nil || values["Civitai metadata"] != nil
-        )
+        return ParsedParameters(summary: summary, producer: producer(values))
+    }
+
+    /// The writer named by a `Software` setting. Civitai's generator names
+    /// itself only through its `Civitai metadata` extension. Other Civitai
+    /// fields, such as `Civitai resources`, are written by many applications
+    /// and do not identify the producer.
+    private static func producer(_ values: [String: String]) -> MetadataProducer? {
+        if let software = values["Software"]?.nonEmpty {
+            return softwareProducer(software)
+        }
+        return values["Civitai metadata"] != nil ? civitaiProducer : nil
+    }
+
+    /// Splits a trailing version from a `Software` value such as
+    /// `Mochi Diffusion 6.2`. A value without a trailing version is all name.
+    private static func softwareProducer(_ software: String) -> MetadataProducer {
+        guard let space = software.lastIndex(of: " ") else { return MetadataProducer(name: software) }
+        let name = software[..<space].trimmingCharacters(in: .whitespaces)
+        let version = String(software[software.index(after: space)...])
+        let versionStart = version.first == "v" ? version.dropFirst() : Substring(version)
+        guard !name.isEmpty, versionStart.first?.isNumber == true else {
+            return MetadataProducer(name: software)
+        }
+        return MetadataProducer(name: name, version: version)
+    }
+
+    /// AUTOMATIC1111 writes a short model hash whose length identifies its
+    /// algorithm. Any other length stays unidentified.
+    private static func modelHash(_ value: String) -> ResourceHash {
+        let algorithm: ResourceHashAlgorithm? =
+            switch value.count {
+            case 8: .a1111AutoV1
+            case 10: .a1111AutoV2
+            case 64: .sha256
+            default: nil
+            }
+        return ResourceHash(algorithm: algorithm, value: value)
     }
 
     private static func detailsValues(_ details: String) -> [String: String] {
@@ -142,14 +181,15 @@ enum A1111Codec {
     }
 
     private static func resourceKind(_ value: String?) -> GenerationResourceKind {
-        switch value?.lowercased() {
-        case "checkpoint", "model": .checkpoint
-        case "lora": .lora
-        case "vae": .vae
-        case "embedding", "textualinversion": .textEncoder
-        case "upscaler": .upscaler
-        case "controlnet", "control": .control
-        default: .other
+        guard let value = value?.nonEmpty else { return .other }
+        switch value.lowercased() {
+        case "checkpoint", "model": return .checkpoint
+        case "lora": return .lora
+        case "vae": return .vae
+        case "embedding", "textualinversion": return .embedding
+        case "upscaler": return .upscaler
+        case "controlnet", "control": return .control
+        default: return GenerationResourceKind(rawValue: value)
         }
     }
 }

@@ -189,7 +189,7 @@ struct MetadataWireProbeTests {
                 let source = try #require(CGImageSourceCreateWithData(bytes as CFData, nil))
                 let metadata = try #require(CGImageSourceCopyMetadataAtIndex(source, 0, nil))
                 let xmp = try #require(CGImageMetadataCreateXMPData(metadata, nil)) as Data
-                let output = MochiLegacyCodec.decode([
+                let output = MetadataInspector.interpret([
                     .init(kind: .xmp, data: xmp, text: String(decoding: xmp, as: UTF8.self))
                 ])
                 let generation = try #require(output.interpretations.first?.generations.first)
@@ -197,7 +197,9 @@ struct MetadataWireProbeTests {
                 #expect(generation.seed == "42")
                 let direct =
                     try type != .heic
-                    && MetadataInspector.inspect(bytes).interpretations.contains { $0.source == .mochiDiffusion }
+                    && MetadataInspector.inspect(bytes).interpretations.contains {
+                        $0.format == .mochiDiffusionLegacyCaption
+                    }
                 if variant == "released", type != .heic { #expect(direct) }
                 report.append([
                     "variant": variant, "format": type.preferredFilenameExtension!, "imageIOBridge": true,

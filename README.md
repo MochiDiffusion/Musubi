@@ -45,7 +45,8 @@ import Musubi
 let inspection = try MetadataInspector.inspect(contentsOf: imageURL)
 
 for interpretation in inspection.interpretations {
-    print(interpretation.source)
+    print(interpretation.format)
+    print(interpretation.producer?.name ?? "Unknown producer")
 
     for generation in interpretation.generations {
         print(generation.positivePrompt ?? "No prompt")
@@ -56,6 +57,10 @@ for interpretation in inspection.interpretations {
 
 Use `inspection.payloads` when source-specific or lossless access matters. The
 payload array is ordered and can contain duplicate keywords.
+
+If you read metadata with another framework, for example XMP from a HEIC image
+through ImageIO, pass the payloads to `MetadataInspector.interpret(_:)`. It
+uses the same codecs as `inspect`.
 
 ## Command-line inspector
 

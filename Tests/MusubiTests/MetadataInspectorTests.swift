@@ -33,7 +33,8 @@ struct MetadataInspectorTests {
         #expect(inspection.container == .png)
         #expect(inspection.imageDimensions == PixelDimensions(width: 64, height: 32))
         #expect(inspection.payloads.count == 1)
-        #expect(interpretation.source == .drawThings)
+        #expect(interpretation.format == .drawThings)
+        #expect(interpretation.producer == MetadataProducer(name: "Draw Things"))
         #expect(generation.positivePrompt == "a red cube")
         #expect(generation.negativePrompt == "blue")
         #expect(generation.seed == "2441935286")
@@ -64,23 +65,27 @@ struct MetadataInspectorTests {
 
         let inspection = try MetadataInspector.inspect(image)
         let interpretation = try #require(
-            inspection.interpretations.first { $0.source == .mochiDiffusion }
+            inspection.interpretations.first { $0.format == .mochiDiffusionLegacyCaption }
         )
         let generation = try #require(interpretation.generations.first)
 
-        #expect(interpretation.sourceVersion == "6.0")
+        #expect(interpretation.producer == MetadataProducer(name: "Mochi Diffusion", version: "6.0"))
         #expect(generation.positivePrompt == "a red; blue cube")
         #expect(generation.negativePrompt == "blurry")
         #expect(generation.model == "Example")
         #expect(generation.steps == 8)
-        #expect(generation.guidance == 4.5)
+        #expect(generation.cfgScale == 4.5)
         #expect(generation.seed == "42")
         #expect(generation.dimensions == PixelDimensions(width: 64, height: 32))
-        #expect(generation.scheduler == "DPM-Solver++")
+        #expect(generation.sampler == "DPM-Solver++")
+        #expect(generation.scheduler == nil)
         #expect(generation.resources.isEmpty)
-        #expect(generation.additionalValues["Quality"] == "high")
-        #expect(generation.additionalValues["Input Images"] == "first.png, second.png")
-        #expect(generation.additionalValues["ML Compute Unit"] == "CPU & GPU")
+        #expect(
+            generation.parameters == [
+                GenerationParameter(key: "Quality", value: "high"),
+                GenerationParameter(key: "Input Images", value: "first.png, second.png"),
+                GenerationParameter(key: "ML Compute Unit", value: "CPU & GPU"),
+            ])
     }
 
     @Test("Mochi legacy JPEG accepts ImageIO XMP packet wrappers")
@@ -101,10 +106,10 @@ struct MetadataInspectorTests {
 
         let inspection = try MetadataInspector.inspect(image)
         let interpretation = try #require(
-            inspection.interpretations.first { $0.source == .mochiDiffusion }
+            inspection.interpretations.first { $0.format == .mochiDiffusionLegacyCaption }
         )
 
-        #expect(interpretation.sourceVersion == "6.0")
+        #expect(interpretation.producer?.version == "6.0")
         #expect(interpretation.generations.first?.positivePrompt == "a cube")
     }
 
@@ -126,7 +131,8 @@ struct MetadataInspectorTests {
         let interpretation = try #require(inspection.interpretations.first)
         let generation = try #require(interpretation.generations.first)
 
-        #expect(interpretation.source == .comfyUI)
+        #expect(interpretation.format == .comfyUI)
+        #expect(interpretation.producer == nil)
         #expect(interpretation.payloadIndices == [0, 1])
         #expect(generation.positivePrompt == "a red cube")
         #expect(generation.negativePrompt == "blue")
@@ -154,7 +160,7 @@ struct MetadataInspectorTests {
         #expect(generation.sampler == "euler_ancestral")
         #expect(generation.scheduler == "normal")
         #expect(generation.steps == 20)
-        #expect(generation.guidance == 3.5)
+        #expect(generation.cfgScale == 3.5)
         #expect(generation.seed == "987654321")
         #expect(generation.denoise == 0.75)
         #expect(generation.dimensions == PixelDimensions(width: 80, height: 48))
@@ -174,7 +180,8 @@ struct MetadataInspectorTests {
         let generation = try #require(interpretation.generations.first)
 
         #expect(inspection.container == .jpeg)
-        #expect(interpretation.source == .civitai)
+        #expect(interpretation.format == .automatic1111)
+        #expect(interpretation.producer == MetadataProducer(name: "Civitai"))
         #expect(generation.positivePrompt == "a red cube")
         #expect(generation.negativePrompt == "blue")
         #expect(generation.steps == 12)
@@ -187,6 +194,154 @@ struct MetadataInspectorTests {
                     civitaiModelVersionID: 42
                 )
             ])
+    }
+
+    @Test("A Software setting names the producer and Civitai resources do not")
+    func a1111ProducerAttribution() throws {
+        let text = """
+            a red cube
+            Steps: 8, Sampler: DPM++ 2M, CFG scale: 7, Seed: 42, Size: 64x32, Software: Mochi Diffusion 6.2, Civitai resources: [{"type":"checkpoint","modelVersionId":42}]
+            """
+        let image = PNGTestImage.make(
+            width: 64,
+            height: 32,
+            chunks: [PNGTestImage.internationalText(keyword: "parameters", text: text)]
+        )
+
+        let interpretation = try #require(MetadataInspector.inspect(image).interpretations.first)
+
+        #expect(interpretation.format == .automatic1111)
+        #expect(interpretation.producer == MetadataProducer(name: "Mochi Diffusion", version: "6.2"))
+    }
+
+    @Test("AUTOMATIC1111 text without a producer setting names no producer")
+    func a1111UnknownProducer() throws {
+        let text = """
+            a red cube
+            Steps: 8, Sampler: Euler, CFG scale: 7, Seed: 42, Size: 64x32, Civitai resources: [{"type":"lora","modelVersionId":7}]
+            """
+        let image = PNGTestImage.make(
+            width: 64,
+            height: 32,
+            chunks: [PNGTestImage.text(keyword: "parameters", text: text)]
+        )
+
+        let interpretation = try #require(MetadataInspector.inspect(image).interpretations.first)
+
+        #expect(interpretation.producer == nil)
+    }
+
+    @Test(
+        "An AUTOMATIC1111 model hash keeps the algorithm its length identifies",
+        arguments: [
+            ("0123abcd", ResourceHashAlgorithm?.some(.a1111AutoV1)),
+            ("0123456789", .a1111AutoV2),
+            (String(repeating: "a", count: 64), .sha256),
+            ("0123456789ab", nil),
+        ]
+    )
+    func a1111ModelHashAlgorithm(hash: String, algorithm: ResourceHashAlgorithm?) throws {
+        let text = "a red cube\nSteps: 8, Sampler: Euler, Seed: 42, Model hash: \(hash), Model: Example"
+        let image = PNGTestImage.make(
+            width: 64,
+            height: 32,
+            chunks: [PNGTestImage.text(keyword: "parameters", text: text)]
+        )
+
+        let generation = try #require(MetadataInspector.inspect(image).interpretations.first?.generations.first)
+
+        #expect(
+            generation.resources == [
+                GenerationResource(
+                    kind: .checkpoint,
+                    name: "Example",
+                    hashes: [ResourceHash(algorithm: algorithm, value: hash)]
+                )
+            ])
+    }
+
+    @Test("Civitai resource kinds keep embeddings distinct and unknown spellings intact")
+    func civitaiResourceKinds() throws {
+        let text = """
+            a red cube
+            Steps: 8, Sampler: Euler, Seed: 42, Civitai resources: [{"type":"textualinversion","modelName":"bad-hands"},{"type":"LoCon","modelName":"style","weight":-0.5},{"modelName":"untyped"}]
+            """
+        let image = PNGTestImage.make(
+            width: 64,
+            height: 32,
+            chunks: [PNGTestImage.text(keyword: "parameters", text: text)]
+        )
+
+        let generation = try #require(MetadataInspector.inspect(image).interpretations.first?.generations.first)
+
+        #expect(
+            generation.resources == [
+                GenerationResource(kind: .embedding, name: "bad-hands"),
+                GenerationResource(kind: GenerationResourceKind(rawValue: "LoCon"), name: "style", weight: -0.5),
+                GenerationResource(kind: .other, name: "untyped"),
+            ])
+    }
+
+    @Test("Extensible identifiers encode as their plain source spelling")
+    func extensibleIdentifierCoding() throws {
+        let resource = GenerationResource(
+            kind: GenerationResourceKind(rawValue: "LoCon"),
+            hashes: [ResourceHash(algorithm: .a1111AutoV2, value: "0123456789")]
+        )
+
+        let data = try JSONEncoder().encode(resource)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let hash = try #require((object["hashes"] as? [[String: Any]])?.first)
+
+        #expect(object["kind"] as? String == "LoCon")
+        #expect(hash["algorithm"] as? String == "a1111-auto-v2")
+        #expect(try JSONDecoder().decode(GenerationResource.self, from: data) == resource)
+    }
+
+    @Test("An empty legacy negative prompt stays empty and a missing one stays missing")
+    func mochiLegacyEmptyPrompt() throws {
+        func negativePrompt(in caption: String) throws -> String? {
+            let xmp = """
+                <x:xmpmeta xmlns:x="adobe:ns:meta/">
+                  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                    <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+                      <dc:description><rdf:Alt><rdf:li xml:lang="x-default">\(caption)</rdf:li></rdf:Alt></dc:description>
+                    </rdf:Description>
+                  </rdf:RDF>
+                </x:xmpmeta>
+                """
+            let payload = EmbeddedMetadataPayload(kind: .xmp, data: Data(xmp.utf8), text: xmp)
+            let generation = MetadataInspector.interpret([payload]).interpretations.first?.generations.first
+            return try #require(generation).negativePrompt
+        }
+
+        #expect(
+            try negativePrompt(
+                in: "Include in Image: a cube; Exclude from Image: ; Seed: 42; Generator: Mochi Diffusion 6.0") == "")
+        #expect(try negativePrompt(in: "Include in Image: a cube; Seed: 42; Generator: Mochi Diffusion 6.0") == nil)
+    }
+
+    @Test("Payloads read by another framework use the same codecs as inspection")
+    func interpretExtractedPayloads() throws {
+        let caption = "Include in Image: a cube; Seed: 42; Size: 64x32; Generator: Mochi Diffusion 6.0"
+        let xmp = """
+            <x:xmpmeta xmlns:x="adobe:ns:meta/">
+              <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+                  <dc:description><rdf:Alt><rdf:li xml:lang="x-default">\(caption)</rdf:li></rdf:Alt></dc:description>
+                </rdf:Description>
+              </rdf:RDF>
+            </x:xmpmeta>
+            """
+        let payload = EmbeddedMetadataPayload(kind: .xmp, data: Data(xmp.utf8), text: xmp)
+        let image = JPEGTestImage.makeXMP(width: 64, height: 32, xmp: xmp)
+
+        let extracted = MetadataInspector.interpret([payload])
+        let inspected = try MetadataInspector.inspect(image)
+
+        #expect(extracted.interpretations.first?.generations == inspected.interpretations.first?.generations)
+        #expect(extracted.interpretations.first?.payloadIndices == [0])
+        #expect(extracted.interpretations.first?.generations.first?.seed == "42")
     }
 
     @Test("Ordinary PNG metadata is not attributed to a generator")

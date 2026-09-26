@@ -43,15 +43,22 @@ them into common fields.
 
 ## Public model
 
-- `MetadataInspector` scans encoded `Data` or a file URL.
+- `MetadataInspector` scans encoded `Data` or a file URL. Its `interpret`
+  function runs the same codecs on payloads that another framework extracted.
 - `MetadataInspection` contains the container, dimensions, ordered payloads,
   interpretations, and non-fatal diagnostics.
 - `EmbeddedMetadataPayload` preserves carrier bytes and decoded text when
   available.
-- `MetadataInterpretation` attributes one or more payloads to a source.
+- `MetadataInterpretation` attributes one or more payloads to a metadata
+  format. Its producer is the application that the metadata names as its
+  writer, or `nil` when it names none. The format alone does not identify the
+  producer: many applications write AUTOMATIC1111-compatible text.
 - `GenerationRecord` contains common fields for one generation operation.
+  Settings with no common field stay in `parameters`, in source order.
 - `GenerationResource` keeps independent names, hashes, AIR identifiers, and
-  Civitai version IDs instead of manufacturing identity.
+  Civitai version IDs instead of manufacturing identity. Each hash records its
+  algorithm when the source identifies it. Resource kinds are open strings, so
+  an unrecognized source spelling is kept.
 
 Seeds are exposed as text so clients do not have to choose a numeric width.
 Source text and JSON integers through `Int64` remain exact; preserving larger

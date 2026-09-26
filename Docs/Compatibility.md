@@ -40,9 +40,16 @@ that the last sampler produced the displayed image.
 ### Automatic1111 and Civitai
 
 Musubi parses A1111-compatible `parameters` text as an open-ended settings line
-and recognizes Civitai resource and metadata JSON fields. Civitai markers cause
-that interpretation to be attributed to Civitai; otherwise it remains
-Automatic1111-compatible.
+and recognizes Civitai resource and metadata JSON fields. The producer comes
+from a `Software` setting. Without one, Civitai is the producer only when the
+text has a `Civitai metadata` field or the image has an Exif Artist of `ai`.
+Other applications also write `Civitai resources`, so that field does not
+identify the producer.
+
+A `Model hash` of 8, 10 or 64 hexadecimal digits is labeled as AUTOMATIC1111's
+original short hash, its current short hash, or a full SHA-256. A hash of any
+other length keeps no algorithm. A Civitai `textualinversion` or `embedding`
+resource is an embedding, not a text encoder.
 
 There is no single Civitai file format. Musubi 0.1 targets the embedded layouts
 observed in Civitai-produced files and compatibility payloads that Civitai
@@ -53,6 +60,8 @@ commonly ingests.
 Musubi recognizes the released v2.2-and-later semicolon-delimited caption in
 PNG and JPEG XMP. The legacy format cannot escape every possible prompt or
 filename, so parsing is necessarily best-effort and the raw XMP is preserved.
+The caption's `Scheduler` names a sampling method, so Musubi reports it as the
+sampler.
 
 ## Test strategy
 

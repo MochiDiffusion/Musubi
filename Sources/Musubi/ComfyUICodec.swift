@@ -16,7 +16,7 @@ enum ComfyUICodec {
                 let generations = generationSummaries(from: nodes)
                 output.interpretations.append(
                     .init(
-                        source: .comfyUI, payloadIndices: comfyPayloadIndices(primary: index, payloads: payloads),
+                        format: .comfyUI, payloadIndices: comfyPayloadIndices(primary: index, payloads: payloads),
                         generations: generations)
                 )
                 if generations.isEmpty {
@@ -86,7 +86,7 @@ enum ComfyUICodec {
             sampler: sampler.inputs["sampler_name"]?.stringValue,
             scheduler: sampler.inputs["scheduler"]?.stringValue,
             steps: sampler.inputs["steps"]?.intValue,
-            guidance: sampler.inputs["cfg"]?.doubleValue,
+            cfgScale: sampler.inputs["cfg"]?.doubleValue,
             seed: sampler.inputs["seed"]?.stringValue,
             dimensions: graphDimensions(in: ancestors, nodes: nodes),
             denoise: sampler.inputs["denoise"]?.doubleValue,
@@ -116,7 +116,7 @@ enum ComfyUICodec {
             sampler: scalarValue(named: "sampler_name", in: samplerIDs, nodes: nodes),
             scheduler: scalarValue(named: "scheduler", in: schedulerIDs, nodes: nodes),
             steps: scalarValue(named: "steps", in: schedulerIDs, nodes: nodes).flatMap(Int.init),
-            guidance: guider?.inputs["cfg"]?.doubleValue
+            cfgScale: guider?.inputs["cfg"]?.doubleValue
                 ?? scalarValue(named: "cfg", in: guiderIDs, nodes: nodes).flatMap(Double.init),
             seed: scalarValue(named: "noise_seed", in: noiseIDs, nodes: nodes),
             dimensions: graphDimensions(in: latentIDs, nodes: nodes),

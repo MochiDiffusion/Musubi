@@ -16,7 +16,12 @@ enum DrawThingsCodec {
                 guard let object = json.objectValue else { continue }
                 let summary = generationSummary(from: object)
                 output.interpretations.append(
-                    .init(source: .drawThings, payloadIndices: [index], generations: [summary])
+                    .init(
+                        format: .drawThings,
+                        producer: fields.creatorTool.map { MetadataProducer(name: $0) },
+                        payloadIndices: [index],
+                        generations: [summary]
+                    )
                 )
             } catch {
                 output.diagnostics.append(
@@ -39,12 +44,13 @@ enum DrawThingsCodec {
         resources += drawThingsResources(version2["controls"], kind: .control)
 
         return GenerationRecord(
-            positivePrompt: object["c"]?.stringValue?.nonEmpty,
-            negativePrompt: object["uc"]?.stringValue?.nonEmpty,
+            // A present but empty prompt is an explicitly empty prompt.
+            positivePrompt: object["c"]?.stringValue,
+            negativePrompt: object["uc"]?.stringValue,
             model: object["model"]?.stringValue?.nonEmpty ?? version2["model"]?.stringValue?.nonEmpty,
             sampler: object["sampler"]?.stringValue?.nonEmpty,
             steps: object["steps"]?.intValue ?? version2["steps"]?.intValue,
-            guidance: object["scale"]?.doubleValue ?? version2["guidanceScale"]?.doubleValue,
+            cfgScale: object["scale"]?.doubleValue ?? version2["guidanceScale"]?.doubleValue,
             seed: object["seed"]?.stringValue ?? version2["seed"]?.stringValue,
             dimensions: dimensions,
             denoise: object["strength"]?.doubleValue ?? version2["strength"]?.doubleValue,

@@ -63,8 +63,11 @@ struct MusubiCommand {
             print("  Generation metadata: none recognized")
         }
         for interpretation in inspection.interpretations {
-            let version = interpretation.sourceVersion.map { " \($0)" } ?? ""
-            print("  Source: \(sourceLabel(interpretation.source))\(version)")
+            print("  Format: \(formatLabel(interpretation.format))")
+            if let producer = interpretation.producer {
+                let version = producer.version.map { " \($0)" } ?? ""
+                print("    Producer: \(producer.name)\(version)")
+            }
             if interpretation.generations.isEmpty {
                 print("    Raw data preserved; no generation summary extracted")
             }
@@ -76,9 +79,10 @@ struct MusubiCommand {
                 printField("Sampler", generation.sampler)
                 printField("Scheduler", generation.scheduler)
                 printField("Steps", generation.steps.map { String($0) })
-                printField("Guidance", generation.guidance.map { String($0) })
+                printField("CFG scale", generation.cfgScale.map { String($0) })
                 printField("Seed", generation.seed)
                 printField("Denoise", generation.denoise.map { String($0) })
+                printField("Generated at", generation.generatedAt.map { $0.ISO8601Format() })
                 if let dimensions = generation.dimensions {
                     printField("Generation size", "\(dimensions.width)×\(dimensions.height)")
                 }
@@ -94,10 +98,10 @@ struct MusubiCommand {
                         print("      \(resource.kind.rawValue): \(identity)\(weight)")
                     }
                 }
-                if !generation.additionalValues.isEmpty {
-                    print("    Additional values:")
-                    for key in generation.additionalValues.keys.sorted() {
-                        printField(key, generation.additionalValues[key], indentation: "      ")
+                if !generation.parameters.isEmpty {
+                    print("    Parameters:")
+                    for parameter in generation.parameters {
+                        printField(parameter.key, parameter.value, indentation: "      ")
                     }
                 }
             }
@@ -119,13 +123,12 @@ struct MusubiCommand {
         payload.keyword.map { "\(payload.kind.rawValue)[\($0)]" } ?? payload.kind.rawValue
     }
 
-    private static func sourceLabel(_ source: GenerationSource) -> String {
-        switch source {
+    private static func formatLabel(_ format: MetadataFormat) -> String {
+        switch format {
         case .drawThings: "Draw Things"
         case .comfyUI: "ComfyUI"
-        case .civitai: "Civitai"
-        case .automatic1111: "Automatic1111-compatible"
-        case .mochiDiffusion: "Mochi Diffusion"
+        case .automatic1111: "AUTOMATIC1111-compatible"
+        case .mochiDiffusionLegacyCaption: "Mochi Diffusion legacy caption"
         }
     }
 

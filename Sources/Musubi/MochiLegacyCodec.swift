@@ -29,8 +29,8 @@ enum MochiLegacyCodec {
 
             output.interpretations.append(
                 MetadataInterpretation(
-                    source: .mochiDiffusion,
-                    sourceVersion: parsed.version,
+                    format: .mochiDiffusionLegacyCaption,
+                    producer: MetadataProducer(name: "Mochi Diffusion", version: parsed.version),
                     payloadIndices: [index],
                     generations: [parsed.summary]
                 )
@@ -46,7 +46,8 @@ enum MochiLegacyCodec {
     }
 
     private static func parseCaption(_ caption: String) -> ParsedCaption? {
-        let values = fields(in: caption)
+        let fields = fields(in: caption)
+        let values = Dictionary(fields.map { ($0.label, $0.value) }) { first, _ in first }
         guard let generator = values["Generator"], generator.hasPrefix("Mochi Diffusion"),
             values["Include in Image"] != nil
         else { return nil }
@@ -64,22 +65,28 @@ enum MochiLegacyCodec {
         return ParsedCaption(
             version: version,
             summary: GenerationRecord(
-                positivePrompt: values["Include in Image"]?.nonEmpty,
-                negativePrompt: values["Exclude from Image"]?.nonEmpty,
+                // A present but empty prompt is an explicitly empty prompt.
+                positivePrompt: values["Include in Image"],
+                negativePrompt: values["Exclude from Image"],
                 model: values["Model"]?.nonEmpty,
-                sampler: nil,
-                scheduler: values["Scheduler"]?.nonEmpty,
+                // Mochi's "Scheduler" names the sampling method, such as
+                // DPM-Solver++. The caption records no separate schedule.
+                sampler: values["Scheduler"]?.nonEmpty,
                 steps: values["Steps"].flatMap(Int.init),
-                guidance: values["Guidance Scale"].flatMap(Double.init),
+                cfgScale: values["Guidance Scale"].flatMap(Double.init),
                 seed: values["Seed"]?.nonEmpty,
                 dimensions: dimensions(values["Size"]),
-                additionalValues: values.filter { !normalizedLabels.contains($0.key) }
+                parameters:
+                    fields
+                    .filter { !normalizedLabels.contains($0.label) }
+                    .map { GenerationParameter(key: $0.label, value: $0.value) }
             )
         )
     }
 
-    private static func fields(in caption: String) -> [String: String] {
-        var result: [String: String] = [:]
+    /// The caption's fields in caption order.
+    private static func fields(in caption: String) -> [(label: String, value: String)] {
+        var result: [(label: String, value: String)] = []
         var cursor = caption.startIndex
 
         while cursor < caption.endIndex {
@@ -95,7 +102,7 @@ enum MochiLegacyCodec {
             }
             .min { $0.lowerBound < $1.lowerBound }
             let valueEnd = nextField?.lowerBound ?? caption.endIndex
-            result[label] = String(caption[valueStart..<valueEnd])
+            result.append((label, String(caption[valueStart..<valueEnd])))
 
             guard let nextField else { break }
             cursor = caption.index(nextField.lowerBound, offsetBy: 2)
