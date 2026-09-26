@@ -1,0 +1,8 @@
+{
+  "name": "musubi-metadata-wire-probe",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@civitai/generation-metadata": "0.1.0"
+  }
+}

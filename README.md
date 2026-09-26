@@ -88,6 +88,7 @@ The public API is intentionally small in 0.1 and may evolve before 1.0.
 ## Documentation
 
 - [Architecture and roadmap](Docs/Architecture.md)
+- [Next metadata wire contract and compatibility probe](Docs/MetadataWireContract.md)
 - [Compatibility and testing](Docs/Compatibility.md)
 - [Ecosystem research](Docs/Research.md)
 - [Release process](Docs/Releasing.md)

@@ -70,6 +70,12 @@ size before claiming hardened processing of arbitrary internet downloads.
 
 ## Writing design
 
+The concrete decisions for Mochi integration are now in the
+[metadata wire contract](MetadataWireContract.md), backed by executable carrier
+and external-reader probes. It supersedes the speculative profile API below:
+start with focused payload codecs, PNG insertion and fresh-output JPEG writing.
+The following overview remains architectural context, not a shipped writing API.
+
 Writing is deliberately excluded from 0.1. The intended design has three
 separate concerns:
 
