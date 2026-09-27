@@ -9,7 +9,7 @@ A1111/Civitai are codecs that interpret their contents.
 The package is intended to:
 
 - locate generation metadata without decoding pixels
-- preserve every relevant payload in file order
+- keep the exact bytes of every payload it reads, in file order
 - provide typed common fields for galleries and inspector interfaces
 - represent more than one source or generation when an image contains them
 - eventually add compatibility payloads without damaging native metadata

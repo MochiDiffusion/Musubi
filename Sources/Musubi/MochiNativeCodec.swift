@@ -62,6 +62,7 @@ public enum MochiNativeCodec {
     /// - Throws: ``MochiNativeCodecError`` when the JSON is not a supported,
     ///   valid native record.
     public static func decodeJSON(_ json: String) throws -> MochiGenerationSnapshot {
+        try checkSize(json)
         let data = Data(json.utf8)
         switch JSONStructureScanner.problem(in: data) {
         case .duplicateKey(let key): throw MochiNativeCodecError.duplicateKey(key)
@@ -93,6 +94,7 @@ public enum MochiNativeCodec {
     /// - Throws: ``MochiNativeCodecError`` when the packet cannot be read, has
     ///   more than one native property, or holds an unsupported record.
     public static func decodeXMPPacket(_ xmp: String) throws -> MochiGenerationSnapshot? {
+        try checkSize(xmp)
         guard let json = try NativePropertyReader.value(in: xmp) else { return nil }
         return try decodeJSON(json)
     }
@@ -139,6 +141,15 @@ public enum MochiNativeCodec {
         for image in details.inputImages ?? [] { append("Input Image", image) }
         record.parameters = parameters + record.parameters
         return record
+    }
+
+    /// Input is untrusted, so it is held to the metadata limit of one container.
+    private static func checkSize(_ text: String) throws {
+        let size = text.utf8.count
+        guard size <= InputLimits.containerMetadataBytes else {
+            throw MochiNativeCodecError.invalidRecord(
+                "The input is \(size) bytes, over the \(InputLimits.containerMetadataBytes)-byte limit")
+        }
     }
 
     private static func escapeXML(_ text: String) -> String {

@@ -3,9 +3,9 @@
 Musubi is a native Swift library for reading and normalizing image-generation
 metadata written by different applications.
 
-It scans encoded images without decoding their pixels, preserves the original
-metadata payloads, and presents common generation details through typed Swift
-models. An image can contain several valid metadata dialects, so Musubi returns
+It scans encoded images without decoding their pixels, keeps the exact bytes
+of each metadata payload it reads, and presents common generation details
+through typed Swift models. An image can contain several valid metadata dialects, so Musubi returns
 every interpretation instead of discarding all but one.
 
 ## Supported metadata
@@ -57,9 +57,14 @@ for interpretation in inspection.interpretations {
 ```
 
 `inspection.selection` names the generation the image most likely records, or
-reports that several are equally plausible. Use `inspection.payloads` when
-source-specific or lossless access matters. The payload array is ordered and
-can contain duplicate keywords.
+reports that several are equally plausible. Use `inspection.payloads` when you
+need a payload's exact bytes. The payload array is ordered and can contain
+duplicate keywords.
+
+Inspection is loss-aware, not lossless. Musubi reads PNG text, `eXIf` and XMP
+chunks and JPEG Exif, XMP and comment segments. It does not capture ICC
+profiles, IPTC, unknown PNG chunks or extended XMP, and it does not yet promise
+that an image can be rewritten without changing unrelated metadata.
 
 If you read metadata with another framework, for example XMP from a HEIC image
 through ImageIO, pass the payloads to `MetadataInspector.interpret(_:)`. It

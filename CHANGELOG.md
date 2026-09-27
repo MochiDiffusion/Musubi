@@ -31,6 +31,11 @@ may include source-breaking API refinements and will be called out here.
   graph size and Exif directories. XML document type declarations are rejected.
 - JSON seeds up to 64 bits are exact, and larger ones are left out instead of
   rounded.
+- `MetadataInspector.interpret(_:)` and the native decoders apply the same
+  payload and size limits as `inspect`.
+- The ComfyUI model and size follow the sampler's own links. Several different
+  candidates leave a field unset with a diagnostic instead of the first by
+  node ID.
 - `MetadataInspector.interpret(_:)` interprets payloads that another framework
   extracted, such as XMP from a HEIC image.
 - `GenerationRecord.generatedAt` for metadata that records a generation time.
@@ -62,6 +67,11 @@ may include source-breaking API refinements and will be called out here.
   graph size and Exif directories. XML document type declarations are rejected.
 - JSON seeds up to 64 bits are exact, and larger ones are left out instead of
   rounded.
+- `MetadataInspector.interpret(_:)` and the native decoders apply the same
+  payload and size limits as `inspect`.
+- The ComfyUI model and size follow the sampler's own links. Several different
+  candidates leave a field unset with a diagnostic instead of the first by
+  node ID.
 
 - Bounded PNG and JPEG metadata scanning without pixel decoding.
 - Ordered preservation of PNG text, XMP, Exif, JPEG Exif, and JPEG comment

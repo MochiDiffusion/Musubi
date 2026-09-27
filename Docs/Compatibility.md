@@ -37,6 +37,13 @@ Custom nodes, dynamic values, and complicated output association can result in
 partial records. Musubi does not guess that the first text node is positive or
 that the last sampler produced the displayed image.
 
+The model comes from the sampler's `model` link. The size comes from its
+`latent_image` link: the nearest node that sets a width and height, passing
+only through other samplers. A scale-by upscale or an encoded image stops the
+walk, so no size is reported. When the nodes on a link give several different
+values, such as two merged checkpoints, the field stays unset with a
+diagnostic. Node IDs carry no meaning, so they never decide between values.
+
 ### Automatic1111 and Civitai
 
 Musubi reads A1111-compatible text the way the WebUI does. The last line is

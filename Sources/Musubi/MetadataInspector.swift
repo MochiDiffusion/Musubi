@@ -33,7 +33,26 @@ public enum MetadataInspector {
     /// packet from a HEIC image through ImageIO, and pass it here to use the
     /// same codecs as ``inspect(_:)``. Payload indices in the result refer to
     /// `payloads`.
+    ///
+    /// The payloads are untrusted, so the limits of ``inspect(_:)`` apply: only
+    /// the leading payloads within the payload count and text size limits are
+    /// interpreted, and a diagnostic reports the rest.
     public static func interpret(_ payloads: [EmbeddedMetadataPayload]) -> PayloadInterpretation {
+        var diagnostics: [MetadataDiagnostic] = []
+        var textBytes = 0
+        let withinLimits = payloads.prefix { payload in
+            textBytes += payload.text?.utf8.count ?? 0
+            return textBytes <= InputLimits.interpretedTextBytes
+        }
+        .prefix(InputLimits.payloadCount)
+        if withinLimits.count < payloads.count {
+            diagnostics.append(
+                MetadataDiagnostic(
+                    severity: .warning,
+                    message:
+                        "Only the first \(withinLimits.count) payloads were interpreted; the rest exceed the limits"))
+        }
+        let payloads = Array(withinLimits)
         let codecOutputs = [
             MochiNativeCodec.decode(payloads),
             DrawThingsCodec.decode(payloads),
@@ -43,7 +62,7 @@ public enum MetadataInspector {
         ]
         return PayloadInterpretation(
             interpretations: codecOutputs.flatMap(\.interpretations),
-            diagnostics: codecOutputs.flatMap(\.diagnostics)
+            diagnostics: diagnostics + codecOutputs.flatMap(\.diagnostics)
         )
     }
 

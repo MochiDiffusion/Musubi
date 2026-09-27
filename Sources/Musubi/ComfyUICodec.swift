@@ -94,13 +94,15 @@ enum ComfyUICodec {
         return GenerationRecord(
             positivePrompt: positive,
             negativePrompt: negative,
-            model: modelName(in: ancestors, nodes: nodes),
+            model: modelName(
+                in: upstreamIDs(for: "model", of: sampler, nodes: nodes), sampler: sampler, nodes: nodes,
+                diagnostics: &diagnostics),
             sampler: sampler.inputs["sampler_name"]?.stringValue,
             scheduler: sampler.inputs["scheduler"]?.stringValue,
             steps: sampler.inputs["steps"]?.intValue,
             cfgScale: sampler.inputs["cfg"]?.doubleValue,
             seed: exactSeed(sampler.inputs["seed"], diagnostics: &diagnostics),
-            dimensions: graphDimensions(in: ancestors, nodes: nodes),
+            dimensions: latentSize(of: sampler, nodes: nodes),
             denoise: sampler.inputs["denoise"]?.doubleValue,
             resources: graphResources(in: ancestors, nodes: nodes)
         )
@@ -116,7 +118,6 @@ enum ComfyUICodec {
         let samplerIDs = upstreamIDs(for: "sampler", of: sampler, nodes: nodes)
         let schedulerIDs = upstreamIDs(for: "sigmas", of: sampler, nodes: nodes)
         let noiseIDs = upstreamIDs(for: "noise", of: sampler, nodes: nodes)
-        let latentIDs = upstreamIDs(for: "latent_image", of: sampler, nodes: nodes)
         let guider = sampler.inputs["guider"].flatMap(referencedNodeID).flatMap { nodes[$0] }
         let positive = guider?.inputs["positive"]
             .flatMap(referencedNodeID)
@@ -128,15 +129,28 @@ enum ComfyUICodec {
         return GenerationRecord(
             positivePrompt: positive,
             negativePrompt: negative,
-            model: modelName(in: ancestors, nodes: nodes),
-            sampler: scalarValue(named: "sampler_name", in: samplerIDs, nodes: nodes),
-            scheduler: scalarValue(named: "scheduler", in: schedulerIDs, nodes: nodes),
-            steps: scalarValue(named: "steps", in: schedulerIDs, nodes: nodes).flatMap(Int.init),
+            model: modelName(
+                in: guider.map { upstreamIDs(for: "model", of: $0, nodes: nodes) } ?? [], sampler: sampler,
+                nodes: nodes, diagnostics: &diagnostics),
+            sampler: scalarValue(
+                named: "sampler_name", in: samplerIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics),
+            scheduler: scalarValue(
+                named: "scheduler", in: schedulerIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics),
+            steps: scalarValue(
+                named: "steps", in: schedulerIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics
+            ).flatMap(Int.init),
             cfgScale: guider?.inputs["cfg"]?.doubleValue
-                ?? scalarValue(named: "cfg", in: guiderIDs, nodes: nodes).flatMap(Double.init),
-            seed: exactSeed(scalarJSON(named: "noise_seed", in: noiseIDs, nodes: nodes), diagnostics: &diagnostics),
-            dimensions: graphDimensions(in: latentIDs, nodes: nodes),
-            denoise: scalarValue(named: "denoise", in: schedulerIDs, nodes: nodes).flatMap(Double.init),
+                ?? scalarValue(
+                    named: "cfg", in: guiderIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics
+                ).flatMap(Double.init),
+            seed: exactSeed(
+                scalarJSON(
+                    named: "noise_seed", in: noiseIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics),
+                diagnostics: &diagnostics),
+            dimensions: latentSize(of: sampler, nodes: nodes),
+            denoise: scalarValue(
+                named: "denoise", in: schedulerIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics
+            ).flatMap(Double.init),
             resources: graphResources(in: ancestors, nodes: nodes)
         )
     }
@@ -211,23 +225,39 @@ enum ComfyUICodec {
         return value.stringValue
     }
 
-    private static func modelName(in nodeIDs: Set<String>, nodes: [String: Node]) -> String? {
-        for id in nodeIDs.sorted(by: numericAwareLessThan) {
-            guard let inputs = nodes[id]?.inputs else { continue }
-            for key in ["ckpt_name", "unet_name", "model_name"] {
-                if let value = inputs[key]?.stringValue?.nonEmpty { return value }
-            }
+    /// The model loaded upstream of a sampler's model link.
+    private static func modelName(
+        in nodeIDs: Set<String>,
+        sampler: Node,
+        nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic]
+    ) -> String? {
+        single("model", in: nodeIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics) { node in
+            ["ckpt_name", "unet_name", "model_name"].lazy.compactMap { node.inputs[$0]?.stringValue?.nonEmpty }.first
         }
-        return nil
     }
 
-    private static func graphDimensions(in nodeIDs: Set<String>, nodes: [String: Node]) -> PixelDimensions? {
-        for id in nodeIDs.sorted(by: numericAwareLessThan) {
-            guard let inputs = nodes[id]?.inputs,
-                let width = inputs["width"]?.intValue,
-                let height = inputs["height"]?.intValue
-            else { continue }
-            return PixelDimensions(width: width, height: height)
+    /// Nodes whose output latent has the size of their input latent.
+    private static let sizePreservingLatentNodes: Set<String> = [
+        "ksampler", "ksampleradvanced", "samplercustom", "samplercustomadvanced",
+    ]
+
+    /// The size of the latent a sampler starts from.
+    ///
+    /// The walk follows the latent link to the nearest node that sets a width
+    /// and height, passing only through samplers, which keep the size. Any
+    /// other node, such as a scale-by upscale or an encoded image, stops the
+    /// walk, because the size it produces is not stated in the graph.
+    private static func latentSize(of sampler: Node, nodes: [String: Node]) -> PixelDimensions? {
+        var current = sampler.inputs["latent_image"].flatMap(referencedNodeID).flatMap { nodes[$0] }
+        var steps = 0
+        while let node = current, steps < InputLimits.nestingDepth {
+            if let width = node.inputs["width"]?.intValue, let height = node.inputs["height"]?.intValue {
+                return width > 0 && height > 0 ? PixelDimensions(width: width, height: height) : nil
+            }
+            guard sizePreservingLatentNodes.contains(node.classType.lowercased()) else { return nil }
+            current = node.inputs["latent_image"].flatMap(referencedNodeID).flatMap { nodes[$0] }
+            steps += 1
         }
         return nil
     }
@@ -253,21 +283,51 @@ enum ComfyUICodec {
     private static func scalarValue(
         named key: String,
         in nodeIDs: Set<String>,
-        nodes: [String: Node]
+        sampler: Node,
+        nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic]
     ) -> String? {
-        scalarJSON(named: key, in: nodeIDs, nodes: nodes)?.stringValue
+        scalarJSON(named: key, in: nodeIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics)?.stringValue
     }
 
-    /// The first scalar input named `key`, in node order. Links are not scalars.
+    /// The scalar input named `key` among `nodeIDs`. Links are not scalars.
     private static func scalarJSON(
         named key: String,
         in nodeIDs: Set<String>,
-        nodes: [String: Node]
+        sampler: Node,
+        nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic]
     ) -> JSONValue? {
-        for id in nodeIDs.sorted(by: numericAwareLessThan) {
-            if let value = nodes[id]?.inputs[key], value.stringValue != nil { return value }
+        single(key, in: nodeIDs, sampler: sampler, nodes: nodes, diagnostics: &diagnostics) { node in
+            node.inputs[key].flatMap { $0.stringValue != nil ? $0 : nil }
         }
-        return nil
+    }
+
+    /// The one distinct value that `value` finds among `nodeIDs`.
+    ///
+    /// Node IDs carry no meaning, so when several nodes give different values
+    /// none is chosen: the field stays unset and a diagnostic names it.
+    private static func single<Value: Equatable>(
+        _ field: String,
+        in nodeIDs: Set<String>,
+        sampler: Node,
+        nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic],
+        value: (Node) -> Value?
+    ) -> Value? {
+        var found: [Value] = []
+        for id in nodeIDs.sorted(by: numericAwareLessThan) {
+            guard let node = nodes[id], let candidate = value(node), !found.contains(candidate) else { continue }
+            found.append(candidate)
+        }
+        guard found.count <= 1 else {
+            diagnostics.append(
+                .init(
+                    severity: .warning,
+                    message: "ComfyUI sampler \(sampler.id) has several \(field) values upstream; none was chosen"))
+            return nil
+        }
+        return found.first
     }
 
     private static func upstreamIDs(

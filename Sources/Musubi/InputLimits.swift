@@ -12,6 +12,9 @@ enum InputLimits {
     static let decompressedBytes = 32 * 1_024 * 1_024
     /// Metadata payloads kept from one container.
     static let payloadCount = 1_024
+    /// Decoded text interpreted from one list of payloads: the most that one
+    /// container read can yield.
+    static let interpretedTextBytes = containerMetadataBytes + decompressedBytes
     /// Nesting depth of JSON and XML.
     static let nestingDepth = 64
     /// Nodes in one ComfyUI graph.

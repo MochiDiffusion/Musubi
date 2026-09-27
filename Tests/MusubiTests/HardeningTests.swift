@@ -315,6 +315,114 @@ struct HardeningTests {
         #expect(inspection.payloads.filter { $0.keyword == "UserComment" }.count == 1)
     }
 
+    // MARK: - Review gaps
+
+    @Test("interpret(_:) applies the payload count limit to caller payloads")
+    func interpretPayloadCount() {
+        let text = "a\nSteps: 8, Seed: 1, Size: 8x8"
+        let payloads = (0..<(InputLimits.payloadCount + 5)).map { _ in Self.payload("parameters", text) }
+
+        let result = MetadataInspector.interpret(payloads)
+
+        #expect(result.interpretations.count == InputLimits.payloadCount)
+        #expect(result.diagnostics.contains { $0.message.contains("exceed the limits") })
+    }
+
+    @Test("interpret(_:) applies the text size limit to caller payloads")
+    func interpretTextBytes() {
+        let huge =
+            "a" + String(repeating: " ", count: InputLimits.interpretedTextBytes) + "\nSteps: 8, Seed: 1, Size: 8x8"
+
+        let result = MetadataInspector.interpret([Self.payload("parameters", huge)])
+
+        #expect(result.interpretations.isEmpty)
+        #expect(result.diagnostics.contains { $0.message.contains("exceed the limits") })
+    }
+
+    @Test("The native decoders refuse input over the byte limit")
+    func nativeDecoderSizeLimit() {
+        let huge = String(repeating: " ", count: InputLimits.containerMetadataBytes + 1)
+
+        #expect(throws: MochiNativeCodecError.self) { try MochiNativeCodec.decodeJSON(huge) }
+        #expect(throws: MochiNativeCodecError.self) { try MochiNativeCodec.decodeXMPPacket(huge) }
+    }
+
+    private static func comfy(_ graph: String) -> PayloadInterpretation {
+        MetadataInspector.interpret([Self.payload("prompt", graph)])
+    }
+
+    @Test("Two checkpoints merged into one model leave the model unset")
+    func mergedModelIsUnset() throws {
+        let result = Self.comfy(
+            #"{"1":{"class_type":"KSampler","inputs":{"seed":1,"model":["2",0],"latent_image":["5",0]}},"#
+                + #""2":{"class_type":"ModelMergeSimple","inputs":{"model1":["3",0],"model2":["4",0],"ratio":0.5}},"#
+                + #""3":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"a.safetensors"}},"#
+                + #""4":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"b.safetensors"}},"#
+                + #""5":{"class_type":"EmptyLatentImage","inputs":{"width":64,"height":32}}}"#)
+        let record = try #require(result.interpretations.first?.generations.first)
+
+        #expect(record.model == nil)
+        #expect(record.dimensions == PixelDimensions(width: 64, height: 32))
+        #expect(
+            result.diagnostics.map(\.message) == [
+                "ComfyUI sampler 1 has several model values upstream; none was chosen"
+            ])
+    }
+
+    @Test("A pixel-upscale hires pass takes its model from the model link and states no size")
+    func hiresPixelUpscale() throws {
+        let result = Self.comfy(
+            #"{"1":{"class_type":"UpscaleModelLoader","inputs":{"model_name":"4x.pth"}},"#
+                + #""2":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"base.safetensors"}},"#
+                + #""3":{"class_type":"EmptyLatentImage","inputs":{"width":512,"height":512}},"#
+                + #""4":{"class_type":"KSampler","inputs":{"seed":1,"model":["2",0],"latent_image":["3",0]}},"#
+                + #""5":{"class_type":"VAEDecode","inputs":{"samples":["4",0]}},"#
+                + #""6":{"class_type":"ImageUpscaleWithModel","inputs":{"upscale_model":["1",0],"image":["5",0]}},"#
+                + #""7":{"class_type":"VAEEncode","inputs":{"pixels":["6",0]}},"#
+                + #""8":{"class_type":"KSampler","inputs":{"seed":2,"model":["2",0],"latent_image":["7",0]}},"#
+                + #""9":{"class_type":"SaveImage","inputs":{"images":["8",0]}}}"#)
+        let generations = try #require(result.interpretations.first?.generations)
+
+        #expect(generations.map(\.model) == ["base.safetensors", "base.safetensors"])
+        #expect(generations.map(\.dimensions) == [PixelDimensions(width: 512, height: 512), nil])
+    }
+
+    @Test("A latent hires pass takes the upscale size, or no size when only a scale factor is given")
+    func hiresLatentUpscale() throws {
+        func secondPassSize(_ upscale: String) throws -> PixelDimensions? {
+            let result = Self.comfy(
+                #"{"1":{"class_type":"EmptyLatentImage","inputs":{"width":512,"height":512}},"#
+                    + #""2":{"class_type":"KSampler","inputs":{"seed":1,"latent_image":["1",0]}},"#
+                    + #""3":"# + upscale + ","
+                    + #""4":{"class_type":"KSampler","inputs":{"seed":2,"latent_image":["3",0]}},"#
+                    + #""5":{"class_type":"KSampler","inputs":{"seed":3,"latent_image":["4",0]}},"#
+                    + #""6":{"class_type":"SaveImage","inputs":{"images":["5",0]}}}"#)
+            let generations = try #require(result.interpretations.first?.generations)
+            #expect(generations.first?.dimensions == PixelDimensions(width: 512, height: 512))
+            #expect(generations[1].dimensions == generations[2].dimensions)
+            return generations[1].dimensions
+        }
+
+        #expect(
+            try secondPassSize(
+                #"{"class_type":"LatentUpscale","inputs":{"samples":["2",0],"width":1024,"height":768}}"#)
+                == PixelDimensions(width: 1024, height: 768))
+        #expect(
+            try secondPassSize(#"{"class_type":"LatentUpscaleBy","inputs":{"samples":["2",0],"scale_by":1.5}}"#)
+                == nil)
+    }
+
+    @Test("SDXL conditioning sizes do not become the generation size")
+    func sdxlConditioningSize() throws {
+        let result = Self.comfy(
+            #"{"1":{"class_type":"KSampler","inputs":{"seed":1,"positive":["2",0],"latent_image":["3",0]}},"#
+                + #""2":{"class_type":"CLIPTextEncodeSDXL","inputs":{"width":4096,"height":4096,"text_g":"a"}},"#
+                + #""3":{"class_type":"EmptyLatentImage","inputs":{"width":1024,"height":1024}}}"#)
+
+        #expect(
+            result.interpretations.first?.generations.first?.dimensions == PixelDimensions(width: 1024, height: 1024))
+    }
+
     // MARK: - Selection
 
     private static let comfyTwoSamplers =
