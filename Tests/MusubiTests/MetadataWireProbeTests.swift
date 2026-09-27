@@ -35,7 +35,15 @@ struct MetadataWireProbeTests {
             self.handWrittenParameters = handWrittenParameters
         }
 
-        var prompt: String { snapshot.generation.positivePrompt ?? "" }
+        /// The prompt a reader should find: the typed prompt plus any LoRA tags
+        /// the encoder appended.
+        var prompt: String {
+            get throws {
+                let lines = try parameters.components(separatedBy: "\n").dropLast()
+                let promptLines = lines.prefix { !$0.hasPrefix("Negative prompt:") }
+                return promptLines.joined(separator: "\n")
+            }
+        }
 
         var parameters: String {
             get throws {
@@ -153,7 +161,7 @@ struct MetadataWireProbeTests {
                 let filename = "\(example.name).\(type.preferredFilenameExtension!)"
                 try bytes.write(to: root.appendingPathComponent(filename), options: .atomic)
                 let expectation: [String: String] = [
-                    "prompt": example.prompt, "parameters": parameters, "native": native,
+                    "prompt": try example.prompt, "parameters": parameters, "native": native,
                 ]
                 let json = try JSONSerialization.data(
                     withJSONObject: expectation, options: [.prettyPrinted, .sortedKeys])

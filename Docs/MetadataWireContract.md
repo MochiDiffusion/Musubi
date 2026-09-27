@@ -131,8 +131,11 @@ For a marker collision that would attribute false settings, the production
 encoder must return a projection diagnostic and omit the unsafe compatibility
 payload rather than knowingly publish wrong settings. Exact text remains native.
 Other documented whitespace normalization is a lossy projection. An empty prompt
-must remain explicitly empty natively. Do not append LoRA tags to native prompt
-text merely to improve resource detection.
+must remain explicitly empty natively. The compatibility text appends a
+`<lora:name:weight>` tag to the prompt line for each named LoRA, the form the
+WebUI writes. With the tag, the tested Civitai reader joins the LoRA's name,
+weight, hash and version ID into one resource. The native prompt never
+contains these tags.
 
 The resource fixture's hashes and ID are synthetic. Tests verify extraction,
 not existence or a real model association. Civitai can keep the same resource

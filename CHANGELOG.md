@@ -30,6 +30,7 @@ may include source-breaking API refinements and will be called out here.
   as JSON and as an XMP packet. `MochiGenerationSnapshot` holds its values.
 - `A1111ParametersEncoder` writes AUTOMATIC1111-compatible text and reports
   every value it leaves out. It writes no text when readers would misread it.
+  Named LoRAs are appended to the prompt line as `<lora:name:weight>` tags.
 - `MetadataFormat.mochiDiffusion` for native records found during inspection.
 
 ## 0.1.1 - 2026-09-22

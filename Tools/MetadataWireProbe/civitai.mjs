@@ -41,6 +41,12 @@ for (const filename of (await readdir(directory)).filter(name => name.endsWith('
       assert.equal(result.raw.hashes.model, '0123456789');
       assert.equal(result.raw.hashes['lora:detail'], 'abcdef0123');
       assert.deepEqual(result.raw.civitaiResources, [{ type: 'lora', weight: 0.75, modelVersionId: 123456 }]);
+      // The prompt's <lora:> tag joins the LoRA's name, weight, hash and version ID into one resource.
+      assert.equal(result.civitai.generation.prompt, 'a red cube');
+      const lora = result.civitai.generation.resources.find(resource => resource.kind === 'lora');
+      assert.deepEqual(
+        { name: lora.name, weight: lora.weight, hash: lora.hash, modelVersionId: lora.modelVersionId },
+        { name: 'detail', weight: 0.75, hash: 'abcdef0123', modelVersionId: 123456 });
     }
     report.images.push({ file, generator: result.generator, raw: result.raw, normalized: result.civitai.generation });
   }

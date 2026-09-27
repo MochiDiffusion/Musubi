@@ -21,6 +21,11 @@ public struct A1111ParametersEncoding: Equatable, Sendable {
 /// encoder never adds a step count, CFG scale, sampler, seed or resource
 /// identity to satisfy a reader. The format cannot carry every prompt exactly,
 /// so ``MochiNativeCodec`` stays the exact record.
+///
+/// Each named LoRA is appended to the prompt line as a `<lora:name:weight>`
+/// tag, the form the WebUI itself writes and readers recognize. The tags exist
+/// only in this text. The generation's prompt, and so the native record, stays
+/// as the user typed it.
 public enum A1111ParametersEncoder {
     /// The largest text the encoder writes, in UTF-8 bytes.
     public static let maximumTextSize = 1_024 * 1_024
@@ -44,12 +49,12 @@ public enum A1111ParametersEncoder {
             return A1111ParametersEncoding(text: nil, diagnostics: diagnostics)
         }
 
-        let prompt = generation.positivePrompt ?? ""
+        let typedPrompt = generation.positivePrompt ?? ""
         let negativePrompt = generation.negativePrompt ?? ""
-        if let marker = reservedMarker(in: prompt) ?? reservedMarker(in: negativePrompt) {
+        if let marker = reservedMarker(in: typedPrompt) ?? reservedMarker(in: negativePrompt) {
             return refuse("A prompt line starts with \"\(marker)\", so readers would misread the settings")
         }
-        if changesUnderLineTrimming(prompt) || changesUnderLineTrimming(negativePrompt) {
+        if changesUnderLineTrimming(typedPrompt) || changesUnderLineTrimming(negativePrompt) {
             omit("Readers trim whitespace at the ends of prompt lines")
         }
 
@@ -88,6 +93,8 @@ public enum A1111ParametersEncoder {
                 "Fewer than \(minimumSettingsCount) settings are known, so readers would read them as prompt text")
         }
 
+        let tags = generation.resources.compactMap(loraTag)
+        let prompt = ([typedPrompt].filter { !$0.isEmpty } + tags).joined(separator: " ")
         var lines = [prompt]
         if !negativePrompt.isEmpty { lines.append("Negative prompt: \(negativePrompt)") }
         lines.append(settings.joined(separator: ", "))
@@ -166,9 +173,21 @@ public enum A1111ParametersEncoder {
     private static func isProjected(_ resource: GenerationResource) -> Bool {
         switch resource.kind {
         case .checkpoint: true
-        case .lora: shortHash(resource) != nil || resource.civitaiModelVersionID != nil
+        case .lora:
+            loraTag(resource) != nil || shortHash(resource) != nil || resource.civitaiModelVersionID != nil
         default: false
         }
+    }
+
+    /// `<lora:name:weight>`, or `<lora:name>` when the weight is unknown. A
+    /// name that contains a colon, `>` or a line break would end the tag early,
+    /// so it has no tag.
+    private static func loraTag(_ resource: GenerationResource) -> String? {
+        guard resource.kind == .lora, let name = resource.name, !name.isEmpty,
+            !name.contains(where: { ":>\n\r".contains($0) })
+        else { return nil }
+        guard let weight = resource.weight, weight.isFinite else { return "<lora:\(name)>" }
+        return "<lora:\(name):\(weight)>"
     }
 
     private static func shortHash(_ resource: GenerationResource) -> String? {

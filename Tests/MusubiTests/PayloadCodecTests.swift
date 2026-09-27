@@ -48,7 +48,7 @@ struct PayloadCodecTests {
         #expect(encoding.diagnostics.map(\.message) == ["The control resource canny has no supported field"])
     }
 
-    @Test("Resource fields match the bytes the pinned external readers accepted")
+    @Test("Resource fields use the forms the pinned external readers accept")
     func resourceTextMatchesOracleFixture() {
         let generation = GenerationRecord(
             positivePrompt: "a red cube",
@@ -74,7 +74,7 @@ struct PayloadCodecTests {
 
         #expect(
             encoding.text == """
-                a red cube
+                a red cube <lora:detail:0.75>
                 Negative prompt: blur
                 Steps: 8, Sampler: Euler, CFG scale: 4.5, Seed: 42, Size: 32x32, Model: Example, \
                 Model hash: 0123456789, Lora hashes: "detail: abcdef0123", \
@@ -139,21 +139,45 @@ struct PayloadCodecTests {
         #expect(withoutProducer.diagnostics.contains { $0.message.contains("prompt text") })
     }
 
-    @Test("A name-only LoRA and a non-finite value are reported, not written or invented")
-    func omissionsAreReported() {
+    @Test("A non-finite value is reported, not written")
+    func nonFiniteValueIsReported() {
         var generation = Self.diffusion
         generation.cfgScale = .nan
-        generation.resources = [GenerationResource(kind: .lora, name: "style", weight: -0.5)]
+        generation.resources = []
 
         let encoding = A1111ParametersEncoder.encode(generation, producer: Self.producer)
 
         #expect(encoding.text?.contains("CFG scale") == false)
-        #expect(encoding.text?.contains("style") == false)
+        #expect(encoding.diagnostics.map(\.message) == ["CFG scale is not a finite number"])
+    }
+
+    @Test("Named LoRAs are appended to the prompt line as tags, and the typed prompt stays exact")
+    func loraTags() throws {
+        var generation = Self.diffusion
+        generation.resources = [
+            GenerationResource(kind: .lora, name: "style", weight: -0.5),
+            GenerationResource(kind: .lora, name: "detail"),
+            GenerationResource(kind: .lora, name: "bad:name", weight: 1),
+        ]
+        let snapshot = MochiGenerationSnapshot(producer: Self.producer, generation: generation)
+
+        let encoding = A1111ParametersEncoder.encode(generation, producer: Self.producer)
+        let decoded = try MochiNativeCodec.decodeJSON(MochiNativeCodec.encodeJSON(snapshot))
+
+        #expect(encoding.text?.hasPrefix("a red cube <lora:style:-0.5> <lora:detail>\nNegative prompt: blur\n") == true)
+        #expect(encoding.diagnostics.map(\.message) == ["The lora resource bad:name has no supported field"])
+        #expect(decoded.generation.positivePrompt == "a red cube")
+    }
+
+    @Test("LoRA tags alone form the prompt line when the typed prompt is empty")
+    func loraTagsWithoutPrompt() {
+        var generation = Self.diffusion
+        generation.positivePrompt = ""
+        generation.resources = [GenerationResource(kind: .lora, name: "style", weight: 0.8)]
+
         #expect(
-            encoding.diagnostics.map(\.message) == [
-                "CFG scale is not a finite number",
-                "The lora resource style has no supported field",
-            ])
+            A1111ParametersEncoder.encode(generation, producer: Self.producer).text?
+                .hasPrefix("<lora:style:0.8>\nNegative prompt:") == true)
     }
 
     @Test("A NUL character blocks the projection")
