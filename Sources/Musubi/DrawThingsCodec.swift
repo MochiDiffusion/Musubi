@@ -12,9 +12,9 @@ enum DrawThingsCodec {
             else { continue }
 
             do {
-                let json = try JSONDecoder().decodeJSONValue(from: userComment)
+                let json = try UntrustedJSON.decode(userComment)
                 guard let object = json.objectValue else { continue }
-                let summary = generationSummary(from: object)
+                let summary = generationSummary(from: object, diagnostics: &output.diagnostics)
                 output.interpretations.append(
                     .init(
                         format: .drawThings,
@@ -25,14 +25,17 @@ enum DrawThingsCodec {
                 )
             } catch {
                 output.diagnostics.append(
-                    .init(severity: .warning, message: "Draw Things XMP contains invalid UserComment JSON")
+                    .init(severity: .warning, message: "Draw Things UserComment JSON was not read: \(error)")
                 )
             }
         }
         return output
     }
 
-    private static func generationSummary(from object: [String: JSONValue]) -> GenerationRecord {
+    private static func generationSummary(
+        from object: [String: JSONValue],
+        diagnostics: inout [MetadataDiagnostic]
+    ) -> GenerationRecord {
         let version2 = object["v2"]?.objectValue ?? [:]
         let dimensions = dimensions(
             size: object["size"]?.stringValue,
@@ -49,9 +52,9 @@ enum DrawThingsCodec {
             negativePrompt: object["uc"]?.stringValue,
             model: object["model"]?.stringValue?.nonEmpty ?? version2["model"]?.stringValue?.nonEmpty,
             sampler: object["sampler"]?.stringValue?.nonEmpty,
-            steps: object["steps"]?.intValue ?? version2["steps"]?.intValue,
+            steps: (object["steps"] ?? version2["steps"])?.intValue.flatMap { $0 > 0 ? $0 : nil },
             cfgScale: object["scale"]?.doubleValue ?? version2["guidanceScale"]?.doubleValue,
-            seed: object["seed"]?.stringValue ?? version2["seed"]?.stringValue,
+            seed: exactSeed(object["seed"] ?? version2["seed"], diagnostics: &diagnostics),
             dimensions: dimensions,
             denoise: object["strength"]?.doubleValue ?? version2["strength"]?.doubleValue,
             resources: resources
@@ -92,10 +95,8 @@ private final class XMPGenerationFields: NSObject, XMLParserDelegate {
 
     static func parse(_ text: String) -> XMPGenerationFields? {
         let fields = XMPGenerationFields()
-        let parser = XMLParser(data: Data(text.utf8))
-        parser.delegate = fields
-        parser.shouldResolveExternalEntities = false
-        return parser.parse() ? fields : nil
+        guard (try? UntrustedXML.parse(text, delegate: fields)) != nil else { return nil }
+        return fields
     }
 
     func parser(

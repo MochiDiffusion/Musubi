@@ -7,13 +7,18 @@ enum ComfyUICodec {
         for (index, payload) in payloads.enumerated() where payload.keyword == "prompt" {
             guard let text = payload.text else { continue }
             do {
-                let json = try JSONDecoder().decodeJSONValue(from: text)
-                guard let object = json.objectValue,
-                    let nodes = nodes(from: object),
-                    !nodes.isEmpty
-                else { continue }
+                let json = try UntrustedJSON.decode(text)
+                guard let object = json.objectValue else { continue }
+                guard object.count <= InputLimits.graphNodes else {
+                    output.diagnostics.append(
+                        .init(
+                            severity: .warning,
+                            message: "ComfyUI graph has more than \(InputLimits.graphNodes) nodes and was not read"))
+                    continue
+                }
+                guard let nodes = nodes(from: object), !nodes.isEmpty else { continue }
 
-                let generations = generationSummaries(from: nodes)
+                let generations = generationSummaries(from: nodes, diagnostics: &output.diagnostics)
                 output.interpretations.append(
                     .init(
                         format: .comfyUI, payloadIndices: comfyPayloadIndices(primary: index, payloads: payloads),
@@ -28,7 +33,7 @@ enum ComfyUICodec {
                 }
             } catch {
                 output.diagnostics.append(
-                    .init(severity: .warning, message: "ComfyUI prompt chunk contains invalid JSON")
+                    .init(severity: .warning, message: "ComfyUI prompt JSON was not read: \(error)")
                 )
             }
         }
@@ -53,7 +58,10 @@ enum ComfyUICodec {
         return result.isEmpty ? nil : result
     }
 
-    private static func generationSummaries(from nodes: [String: Node]) -> [GenerationRecord] {
+    private static func generationSummaries(
+        from nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic]
+    ) -> [GenerationRecord] {
         let outputNodes = nodes.values.filter { isOutputNode($0.classType) }
         let reachable =
             outputNodes.isEmpty
@@ -65,12 +73,16 @@ enum ComfyUICodec {
 
         return samplers.map { sampler in
             sampler.classType.lowercased() == "samplercustomadvanced"
-                ? advancedSamplerSummary(sampler, nodes: nodes)
-                : directSamplerSummary(sampler, nodes: nodes)
+                ? advancedSamplerSummary(sampler, nodes: nodes, diagnostics: &diagnostics)
+                : directSamplerSummary(sampler, nodes: nodes, diagnostics: &diagnostics)
         }
     }
 
-    private static func directSamplerSummary(_ sampler: Node, nodes: [String: Node]) -> GenerationRecord {
+    private static func directSamplerSummary(
+        _ sampler: Node,
+        nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic]
+    ) -> GenerationRecord {
         let ancestors = Set(upstreamNodeIDs(from: sampler.id, nodes: nodes))
         let positive = sampler.inputs["positive"]
             .flatMap(referencedNodeID)
@@ -87,14 +99,18 @@ enum ComfyUICodec {
             scheduler: sampler.inputs["scheduler"]?.stringValue,
             steps: sampler.inputs["steps"]?.intValue,
             cfgScale: sampler.inputs["cfg"]?.doubleValue,
-            seed: sampler.inputs["seed"]?.stringValue,
+            seed: exactSeed(sampler.inputs["seed"], diagnostics: &diagnostics),
             dimensions: graphDimensions(in: ancestors, nodes: nodes),
             denoise: sampler.inputs["denoise"]?.doubleValue,
             resources: graphResources(in: ancestors, nodes: nodes)
         )
     }
 
-    private static func advancedSamplerSummary(_ sampler: Node, nodes: [String: Node]) -> GenerationRecord {
+    private static func advancedSamplerSummary(
+        _ sampler: Node,
+        nodes: [String: Node],
+        diagnostics: inout [MetadataDiagnostic]
+    ) -> GenerationRecord {
         let ancestors = Set(upstreamNodeIDs(from: sampler.id, nodes: nodes))
         let guiderIDs = upstreamIDs(for: "guider", of: sampler, nodes: nodes)
         let samplerIDs = upstreamIDs(for: "sampler", of: sampler, nodes: nodes)
@@ -118,7 +134,7 @@ enum ComfyUICodec {
             steps: scalarValue(named: "steps", in: schedulerIDs, nodes: nodes).flatMap(Int.init),
             cfgScale: guider?.inputs["cfg"]?.doubleValue
                 ?? scalarValue(named: "cfg", in: guiderIDs, nodes: nodes).flatMap(Double.init),
-            seed: scalarValue(named: "noise_seed", in: noiseIDs, nodes: nodes),
+            seed: exactSeed(scalarJSON(named: "noise_seed", in: noiseIDs, nodes: nodes), diagnostics: &diagnostics),
             dimensions: graphDimensions(in: latentIDs, nodes: nodes),
             denoise: scalarValue(named: "denoise", in: schedulerIDs, nodes: nodes).flatMap(Double.init),
             resources: graphResources(in: ancestors, nodes: nodes)
@@ -157,7 +173,10 @@ enum ComfyUICodec {
         nodes: [String: Node],
         visited: inout Set<String>
     ) -> String? {
-        guard visited.insert(nodeID).inserted, let node = nodes[nodeID] else { return nil }
+        // Each recursion visits a new node, so capping the visited count also
+        // caps the recursion depth.
+        guard visited.count < InputLimits.nestingDepth, visited.insert(nodeID).inserted, let node = nodes[nodeID]
+        else { return nil }
         let classType = node.classType.lowercased()
         if classType.contains("conditioningzeroout") { return nil }
 
@@ -236,8 +255,17 @@ enum ComfyUICodec {
         in nodeIDs: Set<String>,
         nodes: [String: Node]
     ) -> String? {
+        scalarJSON(named: key, in: nodeIDs, nodes: nodes)?.stringValue
+    }
+
+    /// The first scalar input named `key`, in node order. Links are not scalars.
+    private static func scalarJSON(
+        named key: String,
+        in nodeIDs: Set<String>,
+        nodes: [String: Node]
+    ) -> JSONValue? {
         for id in nodeIDs.sorted(by: numericAwareLessThan) {
-            if let value = nodes[id]?.inputs[key]?.stringValue { return value }
+            if let value = nodes[id]?.inputs[key], value.stringValue != nil { return value }
         }
         return nil
     }

@@ -416,7 +416,7 @@ struct MetadataInspectorTests {
     }
 }
 
-private enum PNGTestImage {
+enum PNGTestImage {
     struct Chunk {
         let type: String
         let data: Data
@@ -511,7 +511,7 @@ private enum PNGTestImage {
     }
 }
 
-private enum JPEGTestImage {
+enum JPEGTestImage {
     static func make(width: UInt16, height: UInt16, userComment: String) -> Data {
         let comment = Data("UNICODE\0".utf8) + userComment.data(using: .utf16BigEndian)!
         var tiff = Data([0x4D, 0x4D, 0, 42, 0, 0, 0, 8])

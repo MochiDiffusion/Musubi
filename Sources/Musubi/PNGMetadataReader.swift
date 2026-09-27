@@ -2,7 +2,7 @@ import Foundation
 
 enum PNGMetadataReader {
     private static let signature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
-    private static let metadataByteLimit = 16 * 1_024 * 1_024
+    private static let metadataByteLimit = InputLimits.containerMetadataBytes
 
     static func read(_ data: Data) throws -> ContainerReadResult {
         guard data.hasPrefix(signature) else {
@@ -15,6 +15,7 @@ enum PNGMetadataReader {
         var payloads: [EmbeddedMetadataPayload] = []
         var diagnostics: [MetadataDiagnostic] = []
         var inspectedMetadataBytes = 0
+        var decompressionBudget = InputLimits.decompressedBytes
 
         while offset <= data.count - 12 {
             guard let lengthValue = reader.uint32(at: offset, endian: .big) else {
@@ -63,7 +64,8 @@ enum PNGMetadataReader {
                     expectedCRC: expectedCRC, to: &diagnostics
                 )
                 do {
-                    payloads.append(try decodeTextChunk(type: type, data: chunkData))
+                    let payload = try decodeTextChunk(type: type, data: chunkData, budget: &decompressionBudget)
+                    append([payload], to: &payloads, diagnostics: &diagnostics)
                 } catch let error as MetadataInspectionError {
                     diagnostics.append(.init(severity: .warning, message: String(describing: error)))
                 }
@@ -80,8 +82,9 @@ enum PNGMetadataReader {
                     type: type, typeData: typeData, payload: chunkData,
                     expectedCRC: expectedCRC, to: &diagnostics
                 )
-                payloads.append(.init(kind: .pngExif, data: chunkData))
-                payloads.append(contentsOf: exifTextPayloads(in: chunkData))
+                append(
+                    [.init(kind: .pngExif, data: chunkData)] + exifTextPayloads(in: chunkData),
+                    to: &payloads, diagnostics: &diagnostics)
             case "IEND":
                 guard let dimensions else {
                     throw MetadataInspectionError.malformedContainer("PNG has no IHDR chunk")
@@ -112,7 +115,11 @@ enum PNGMetadataReader {
         diagnostics.append(.init(severity: .warning, message: "PNG \(type) chunk has an invalid CRC"))
     }
 
-    private static func decodeTextChunk(type: String, data: Data) throws -> EmbeddedMetadataPayload {
+    private static func decodeTextChunk(
+        type: String,
+        data: Data,
+        budget: inout Int
+    ) throws -> EmbeddedMetadataPayload {
         guard let separator = data.firstIndex(of: 0, in: 0..<data.count), separator > 0 else {
             throw MetadataInspectionError.malformedContainer("PNG \(type) chunk has no keyword separator")
         }
@@ -131,10 +138,10 @@ enum PNGMetadataReader {
             guard separator + 2 <= data.count, data[separator + 1] == 0 else {
                 throw MetadataInspectionError.malformedContainer("PNG zTXt chunk has an unsupported compression method")
             }
-            textData = try ZlibDecompressor.decompress(data.subdata(in: separator + 2..<data.count))
+            textData = try decompress(data.subdata(in: separator + 2..<data.count), budget: &budget)
             encoding = .isoLatin1
         case "iTXt":
-            textData = try decodeInternationalText(data, afterKeyword: separator)
+            textData = try decodeInternationalText(data, afterKeyword: separator, budget: &budget)
             encoding = .utf8
         default:
             throw MetadataInspectionError.malformedContainer("Unsupported PNG text chunk")
@@ -147,7 +154,22 @@ enum PNGMetadataReader {
         return EmbeddedMetadataPayload(kind: kind, keyword: keyword, data: data, text: text)
     }
 
-    private static func decodeInternationalText(_ data: Data, afterKeyword separator: Int) throws -> Data {
+    /// Decompresses within what remains of the container's decompression budget.
+    private static func decompress(_ data: Data, budget: inout Int) throws -> Data {
+        guard budget > 0 else {
+            throw MetadataInspectionError.metadataLimitExceeded(
+                "Decompressed PNG metadata exceeds \(InputLimits.decompressedBytes) bytes")
+        }
+        let output = try ZlibDecompressor.decompress(data, limit: budget)
+        budget -= output.count
+        return output
+    }
+
+    private static func decodeInternationalText(
+        _ data: Data,
+        afterKeyword separator: Int,
+        budget: inout Int
+    ) throws -> Data {
         guard separator + 3 <= data.count else {
             throw MetadataInspectionError.malformedContainer("Truncated PNG iTXt header")
         }
@@ -166,7 +188,7 @@ enum PNGMetadataReader {
             throw MetadataInspectionError.malformedContainer("PNG iTXt chunk has no translated-keyword separator")
         }
         let encodedText = data.subdata(in: translatedKeywordEnd + 1..<data.count)
-        return compressionFlag == 1 ? try ZlibDecompressor.decompress(encodedText) : encodedText
+        return compressionFlag == 1 ? try decompress(encodedText, budget: &budget) : encodedText
     }
 
     private static func exifTextPayloads(in data: Data) -> [EmbeddedMetadataPayload] {

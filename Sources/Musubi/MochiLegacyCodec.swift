@@ -136,10 +136,8 @@ private final class XMPDescription: NSObject, XMLParserDelegate {
             xml = xmp[...]
         }
         let delegate = XMPDescription()
-        let parser = XMLParser(data: Data(xml.utf8))
-        parser.delegate = delegate
-        parser.shouldResolveExternalEntities = false
-        return parser.parse() ? delegate.value : nil
+        guard (try? UntrustedXML.parse(String(xml), delegate: delegate)) != nil else { return nil }
+        return delegate.value
     }
 
     func parser(

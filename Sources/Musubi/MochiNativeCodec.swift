@@ -63,8 +63,10 @@ public enum MochiNativeCodec {
     ///   valid native record.
     public static func decodeJSON(_ json: String) throws -> MochiGenerationSnapshot {
         let data = Data(json.utf8)
-        if let key = JSONStructureScanner.firstDuplicateKey(in: data) {
-            throw MochiNativeCodecError.duplicateKey(key)
+        switch JSONStructureScanner.problem(in: data) {
+        case .duplicateKey(let key): throw MochiNativeCodecError.duplicateKey(key)
+        case .some(let problem): throw MochiNativeCodecError.invalidRecord("The JSON is not valid: \(problem)")
+        case nil: break
         }
         let decoder = JSONDecoder()
         let header: WireHeader
@@ -425,12 +427,11 @@ private final class NativePropertyReader: NSObject, XMLParserDelegate {
             xml = xmp[...]
         }
         let reader = NativePropertyReader()
-        let parser = XMLParser(data: Data(xml.utf8))
-        parser.delegate = reader
-        parser.shouldProcessNamespaces = true
-        parser.shouldReportNamespacePrefixes = true
-        parser.shouldResolveExternalEntities = false
-        guard parser.parse() else { throw MochiNativeCodecError.invalidRecord("The XMP packet is not valid XML") }
+        do {
+            try UntrustedXML.parse(String(xml), delegate: reader, processNamespaces: true)
+        } catch {
+            throw MochiNativeCodecError.invalidRecord("The XMP packet was not read: \(error)")
+        }
         guard reader.values.count <= 1 else { throw MochiNativeCodecError.multipleRecords }
         return reader.values.first
     }

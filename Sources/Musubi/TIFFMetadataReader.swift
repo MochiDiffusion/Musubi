@@ -26,24 +26,34 @@ enum TIFFMetadataReader {
 
         var values: [TextValue] = []
         var visitedOffsets = Set<Int>()
+        // Text values in well-formed Exif do not overlap, so their total never
+        // exceeds the block. Entries that point at one value many times stop here.
+        var byteBudget = data.count
         readIFD(
             at: Int(firstIFD),
+            depth: 0,
             reader: reader,
             endian: endian,
             visitedOffsets: &visitedOffsets,
+            byteBudget: &byteBudget,
             values: &values
         )
         return values
     }
 
+    /// Reads one directory and the Exif directory it points to. `depth` and
+    /// `byteBudget` bound the walk.
     private static func readIFD(
         at offset: Int,
+        depth: Int,
         reader: BinaryReader,
         endian: Endian,
         visitedOffsets: inout Set<Int>,
+        byteBudget: inout Int,
         values: inout [TextValue]
     ) {
-        guard visitedOffsets.insert(offset).inserted,
+        guard depth <= InputLimits.exifDirectoryDepth,
+            visitedOffsets.insert(offset).inserted,
             let entryCount = reader.uint16(at: offset, endian: endian),
             entryCount <= 2_048
         else { return }
@@ -59,29 +69,32 @@ enum TIFFMetadataReader {
                 let byteCount = byteCount(type: type, count: count)
             else { continue }
 
+            if tag == 0x8769 {
+                if let nestedOffset = reader.uint32(at: entryOffset + 8, endian: endian) {
+                    readIFD(
+                        at: Int(nestedOffset),
+                        depth: depth + 1,
+                        reader: reader,
+                        endian: endian,
+                        visitedOffsets: &visitedOffsets,
+                        byteBudget: &byteBudget,
+                        values: &values
+                    )
+                }
+                continue
+            }
+
+            // Only text tags are copied, and only within the budget.
+            guard let keyword = keyword(for: tag) else { continue }
+            byteBudget -= byteCount
+            guard byteBudget >= 0 else { return }
             guard
                 let valueData = valueData(
                     entryOffset: entryOffset,
                     byteCount: byteCount,
                     reader: reader,
                     endian: endian
-                )
-            else { continue }
-
-            if tag == 0x8769,
-                let nestedOffset = reader.uint32(at: entryOffset + 8, endian: endian)
-            {
-                readIFD(
-                    at: Int(nestedOffset),
-                    reader: reader,
-                    endian: endian,
-                    visitedOffsets: &visitedOffsets,
-                    values: &values
-                )
-                continue
-            }
-
-            guard let keyword = keyword(for: tag),
+                ),
                 let text = decode(tag: tag, type: type, data: valueData, endian: endian)
             else { continue }
             values.append(TextValue(keyword: keyword, data: valueData, text: text))

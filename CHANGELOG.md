@@ -22,6 +22,15 @@ may include source-breaking API refinements and will be called out here.
 
 ### Added
 
+- `GenerationSelection`, through `MetadataInspection.selection`, names the
+  generation an image most likely records or reports ambiguity.
+- AUTOMATIC1111 text is read as the WebUI reads it: sparse settings lines,
+  unquoted values, empty prompts, ordered unrecognized settings, reported
+  invalid or conflicting values, and `<lora:>` tags as resources.
+- Limits on decompressed bytes, payload count, JSON and XML nesting, ComfyUI
+  graph size and Exif directories. XML document type declarations are rejected.
+- JSON seeds up to 64 bits are exact, and larger ones are left out instead of
+  rounded.
 - `MetadataInspector.interpret(_:)` interprets payloads that another framework
   extracted, such as XMP from a HEIC image.
 - `GenerationRecord.generatedAt` for metadata that records a generation time.
@@ -43,6 +52,16 @@ may include source-breaking API refinements and will be called out here.
 ## 0.1.0 - 2026-09-05
 
 ### Added
+
+- `GenerationSelection`, through `MetadataInspection.selection`, names the
+  generation an image most likely records or reports ambiguity.
+- AUTOMATIC1111 text is read as the WebUI reads it: sparse settings lines,
+  unquoted values, empty prompts, ordered unrecognized settings, reported
+  invalid or conflicting values, and `<lora:>` tags as resources.
+- Limits on decompressed bytes, payload count, JSON and XML nesting, ComfyUI
+  graph size and Exif directories. XML document type declarations are rejected.
+- JSON seeds up to 64 bits are exact, and larger ones are left out instead of
+  rounded.
 
 - Bounded PNG and JPEG metadata scanning without pixel decoding.
 - Ordered preservation of PNG text, XMP, Exif, JPEG Exif, and JPEG comment

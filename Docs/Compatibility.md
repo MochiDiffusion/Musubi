@@ -39,8 +39,31 @@ that the last sampler produced the displayed image.
 
 ### Automatic1111 and Civitai
 
-Musubi parses A1111-compatible `parameters` text as an open-ended settings line
-and recognizes Civitai resource and metadata JSON fields. The producer comes
+Musubi reads A1111-compatible text the way the WebUI does. The last line is
+the settings line when it has at least three settings, one of them a common
+generation setting. Text in a `UserComment` or JPEG comment also needs `Steps`,
+so an ordinary photo comment is not mistaken for generation data. Text in a
+`parameters` chunk without `Steps` is still read, so Musubi understands sparse
+records that the Civitai reader rejects. Earlier lines are trimmed, and a line
+that starts with `Negative prompt:` begins the negative prompt. The prompt is
+always present, possibly empty.
+
+Quoted values are unquoted as JSON strings. A value that starts with `[` or
+`{` runs to its closing bracket, so JSON extensions keep their commas. A common
+setting with an invalid value, such as `CFG scale: nan`, is reported and kept
+as a parameter. A common setting that repeats with different values is left
+out of the common fields and every value is kept. Other settings stay in order
+as parameters.
+
+Each `<lora:name>` or `<lora:name:weight>` tag in the prompt becomes a LoRA
+resource, joined with its `Lora hashes` entry and with a Civitai LoRA of the
+same name. The tags stay in the prompt, because there the user typed them.
+Text that names Mochi Diffusion as its producer is the exception: its trailing
+run of space-separated tags was added by `A1111ParametersEncoder`, so it is
+removed from the prompt. A tag that is not preceded by a space stops the
+removal.
+
+Musubi recognizes Civitai resource and metadata JSON fields. The producer comes
 from a `Software` setting. Without one, Civitai is the producer only when the
 text has a `Civitai metadata` field or the image has an Exif Artist of `ai`.
 Other applications also write `Civitai resources`, so that field does not
@@ -54,6 +77,26 @@ resource is an embedding, not a text encoder.
 There is no single Civitai file format. Musubi 0.1 targets the embedded layouts
 observed in Civitai-produced files and compatibility payloads that Civitai
 commonly ingests.
+
+### Choosing a generation
+
+`MetadataInspection.selection` names one generation only when that involves no
+guess. A single generation from a primary format, such as a Mochi native
+record, a ComfyUI graph with one sampler, or Draw Things XMP, is selected even
+when AUTOMATIC1111 text is also present, because that text is usually a copy
+the same application added. Several primary generations, such as a graph with
+two samplers or records from two applications, are ambiguous. Without a primary
+format, one AUTOMATIC1111 generation is selected. Records are never merged, and
+every interpretation stays available.
+
+### Limits
+
+Musubi reads at most 16 MiB of metadata per container and decompresses at most
+32 MiB in total. It keeps the first 1,024 payloads, accepts 64 levels of JSON
+or XML nesting and ComfyUI graphs of up to 4,096 nodes, and follows 4 levels of
+nested Exif directories. JSON seeds are exact up to 64-bit integers. A larger
+JSON seed is left out with a diagnostic instead of being rounded, and the raw
+payload keeps its digits. Seeds in text formats are exact at any length.
 
 ### Mochi Diffusion native
 
@@ -95,10 +138,9 @@ but are not required for the initial proof-of-concept release.
 ## Important 0.1 limitations
 
 - payload encoders only: no container writing yet
-- no preferred interpretation when several are present
 - no complete mapping of arbitrary ComfyUI custom nodes
-- JSON integer literals larger than `Int64` may lose their original spelling in
-  normalized fields; their raw payload remains intact
+- JSON integers beyond 64 bits are left out of normalized fields; their raw
+  payload remains intact
 - no general Exif/IPTC API
 - no pixel decoding or image validation beyond the scanned structures
 - no WebP, HEIC, C2PA, or SynthID support

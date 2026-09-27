@@ -56,8 +56,10 @@ for interpretation in inspection.interpretations {
 }
 ```
 
-Use `inspection.payloads` when source-specific or lossless access matters. The
-payload array is ordered and can contain duplicate keywords.
+`inspection.selection` names the generation the image most likely records, or
+reports that several are equally plausible. Use `inspection.payloads` when
+source-specific or lossless access matters. The payload array is ordered and
+can contain duplicate keywords.
 
 If you read metadata with another framework, for example XMP from a HEIC image
 through ImageIO, pass the payloads to `MetadataInspector.interpret(_:)`. It

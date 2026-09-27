@@ -1,7 +1,7 @@
 import Foundation
 
 enum JPEGMetadataReader {
-    private static let metadataByteLimit = 16 * 1_024 * 1_024
+    private static let metadataByteLimit = InputLimits.containerMetadataBytes
     private static let exifPrefix = Data([0x45, 0x78, 0x69, 0x66, 0, 0])
     private static let xmpPrefix = Data("http://ns.adobe.com/xap/1.0/\0".utf8)
 
@@ -14,7 +14,7 @@ enum JPEGMetadataReader {
         var offset = 2
         var dimensions: PixelDimensions?
         var payloads: [EmbeddedMetadataPayload] = []
-        let diagnostics: [MetadataDiagnostic] = []
+        var diagnostics: [MetadataDiagnostic] = []
         var inspectedMetadataBytes = 0
 
         while offset < data.count {
@@ -55,15 +55,17 @@ enum JPEGMetadataReader {
                 }
                 if segmentData.starts(with: exifPrefix) {
                     let tiff = segmentData.dropFirst(exifPrefix.count)
-                    payloads.append(.init(kind: .jpegExif, data: segmentData))
-                    payloads.append(
-                        contentsOf: TIFFMetadataReader.textValues(in: tiff).map {
-                            .init(kind: .exifValue, keyword: $0.keyword, data: $0.data, text: $0.text)
-                        })
+                    let values = TIFFMetadataReader.textValues(in: tiff).map {
+                        EmbeddedMetadataPayload(kind: .exifValue, keyword: $0.keyword, data: $0.data, text: $0.text)
+                    }
+                    append(
+                        [.init(kind: .jpegExif, data: segmentData)] + values, to: &payloads, diagnostics: &diagnostics)
                 } else if segmentData.starts(with: xmpPrefix) {
                     let xmp = segmentData.dropFirst(xmpPrefix.count)
                     let text = String(data: xmp, encoding: .utf8)
-                    payloads.append(.init(kind: .xmp, keyword: "XML:com.adobe.xmp", data: segmentData, text: text))
+                    append(
+                        [.init(kind: .xmp, keyword: "XML:com.adobe.xmp", data: segmentData, text: text)],
+                        to: &payloads, diagnostics: &diagnostics)
                 }
             } else if marker == 0xFE {
                 inspectedMetadataBytes += segmentData.count
@@ -74,7 +76,9 @@ enum JPEGMetadataReader {
                 let text =
                     String(data: segmentData, encoding: .utf8)
                     ?? String(data: segmentData, encoding: .isoLatin1)
-                payloads.append(.init(kind: .jpegComment, keyword: "Comment", data: segmentData, text: text))
+                append(
+                    [.init(kind: .jpegComment, keyword: "Comment", data: segmentData, text: text)],
+                    to: &payloads, diagnostics: &diagnostics)
             }
 
             offset = payloadEnd

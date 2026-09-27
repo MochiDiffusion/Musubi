@@ -55,6 +55,8 @@ them into common fields.
   producer: many applications write AUTOMATIC1111-compatible text.
 - `GenerationRecord` contains common fields for one generation operation.
   Settings with no common field stay in `parameters`, in source order.
+- `GenerationSelection` names the generation an image most likely records, or
+  reports that several are equally plausible. It never merges records.
 - `GenerationResource` keeps independent names, hashes, AIR identifiers, and
   Civitai version IDs instead of manufacturing identity. Each hash records its
   algorithm when the source identifies it. Resource kinds are open strings, so
@@ -66,14 +68,18 @@ JSON numeric literals without conversion is a post-0.1 parser improvement.
 
 ## Safety model
 
-Image metadata is untrusted. Container readers use checked offsets, reject
-truncated structures, cap total metadata reads, and cap decompressed text.
-Malformed individual text payloads can produce diagnostics while valid
-payloads remain available. Fatal container corruption throws a
-`MetadataInspectionError`.
+Image metadata is untrusted. Container readers use checked offsets and reject
+truncated structures. `InputLimits` bounds everything that grows with the
+input: metadata bytes per container, decompressed bytes across all compressed
+payloads, the payload count, JSON and XML nesting, ComfyUI graph size, and
+nested Exif directories. Exif text copies cannot exceed the size of their
+block. JSON and XML nesting is checked before any recursive decoding, and XML
+with a document type declaration is rejected, which rules out entity
+expansion.
 
-Future work should add explicit limits for JSON/XML depth and ComfyUI graph
-size before claiming hardened processing of arbitrary internet downloads.
+A payload that is malformed or over a limit produces a diagnostic, and valid
+payloads and interpretations beside it remain available. Fatal container
+corruption throws a `MetadataInspectionError`.
 
 ## Writing design
 

@@ -2,15 +2,15 @@ import Foundation
 
 /// Checks JSON structure that Foundation's decoders do not report.
 ///
+/// The scanner walks the text once, without recursion. It finds nesting deeper
+/// than ``InputLimits/nestingDepth`` and keys that repeat within one object.
 /// `JSONDecoder` keeps one value when an object repeats a key, so a record with
-/// conflicting values would decode without error. The scanner walks the text
-/// once and compares decoded key strings, so `"a"` and `"a"` count as the
-/// same key.
+/// conflicting values would otherwise decode without error. Keys are compared
+/// after decoding their escapes, so `"a"` and `"a"` are the same key.
 enum JSONStructureScanner {
-    /// The first repeated key in any object, or `nil` when no key repeats or
-    /// the text is not well-formed enough to scan. Malformed JSON is left for
-    /// the decoder to reject.
-    static func firstDuplicateKey(in data: Data) -> String? {
+    /// The first structural problem, or `nil`. Malformed JSON that is not too
+    /// deep and repeats no key is left for the decoder to reject.
+    static func problem(in data: Data) -> UntrustedInputProblem? {
         let bytes = [UInt8](data)
         var index = 0
         // One entry per open container: the keys seen so far, or nil for an array.
@@ -18,14 +18,12 @@ enum JSONStructureScanner {
         var expectingKey = false
 
         while index < bytes.count {
-            let byte = bytes[index]
-            switch byte {
-            case UInt8(ascii: "{"):
-                containers.append([])
-                expectingKey = true
-            case UInt8(ascii: "["):
-                containers.append(nil)
-                expectingKey = false
+            switch bytes[index] {
+            case UInt8(ascii: "{"), UInt8(ascii: "["):
+                let isObject = bytes[index] == UInt8(ascii: "{")
+                containers.append(isObject ? [] : nil)
+                guard containers.count <= InputLimits.nestingDepth else { return .tooDeep }
+                expectingKey = isObject
             case UInt8(ascii: "}"), UInt8(ascii: "]"):
                 guard !containers.isEmpty else { return nil }
                 containers.removeLast()
@@ -34,12 +32,12 @@ enum JSONStructureScanner {
                 expectingKey = containers.last.map { $0 != nil } ?? false
             case UInt8(ascii: "\""):
                 guard let end = stringEnd(in: bytes, from: index) else { return nil }
-                if expectingKey, containers.last != nil, var keys = containers.last! {
+                if expectingKey, let open = containers.last, var keys = open {
                     guard
                         let key = try? JSONSerialization.jsonObject(
                             with: Data(bytes[index...end]), options: .fragmentsAllowed) as? String
                     else { return nil }
-                    if !keys.insert(key).inserted { return key }
+                    if !keys.insert(key).inserted { return .duplicateKey(key) }
                     containers[containers.count - 1] = keys
                     expectingKey = false
                 }
