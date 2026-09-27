@@ -77,11 +77,16 @@ size before claiming hardened processing of arbitrary internet downloads.
 
 ## Writing design
 
-The concrete decisions for Mochi integration are now in the
+The concrete decisions for Mochi integration are in the
 [metadata wire contract](MetadataWireContract.md), backed by executable carrier
-and external-reader probes. It supersedes the speculative profile API below:
-start with focused payload codecs, PNG insertion and fresh-output JPEG writing.
-The following overview remains architectural context, not a shipped writing API.
+and external-reader probes. It supersedes the speculative profile API below.
+
+Payload encoding is implemented. `MochiNativeCodec` writes Mochi's native record
+as JSON and as an XMP packet. `A1111ParametersEncoder` writes
+AUTOMATIC1111-compatible text and lists every value it leaves out. Both take
+the same `MochiGenerationSnapshot`, so the two payloads cannot disagree. PNG
+chunk insertion is not implemented yet. The following overview remains
+architectural context, not a shipped writing API.
 
 Writing is deliberately excluded from 0.1. The intended design has three
 separate concerns:

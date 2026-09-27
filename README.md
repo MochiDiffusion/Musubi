@@ -18,6 +18,7 @@ Musubi 0.1 reads:
 | ComfyUI | Tested | — | Execution prompt and workflow graphs; common core samplers and loaders |
 | Civitai | Best effort | Tested | A1111-compatible parameters and Civitai resource fields |
 | Automatic1111-compatible | Best effort | Best effort | Common parameters and open-ended settings lines |
+| Mochi Diffusion native | Tested | Tested | Versioned JSON record in XMP |
 | Mochi Diffusion legacy | Tested | Tested | Classic v2.2-and-later XMP captions |
 
 Support means Musubi recognizes the formats represented by its tests and local

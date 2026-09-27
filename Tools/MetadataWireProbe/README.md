@@ -22,7 +22,10 @@ node Tools/MetadataWireProbe/civitai.mjs "$probe_dir"
 The Swift tests check native XMP in PNG/JPEG/HEIC, correct PNG and JPEG
 compatibility carriers, a long native value, JPEG length boundaries, and the
 legacy ImageIO-to-library route. Optional export writes six fixture families
-and expected text/native JSON. It also writes `unicode-imageio.jpeg` as a
+and expected text/native JSON. The four fixtures that describe Mochi output
+come from `MochiNativeCodec` and `A1111ParametersEncoder`. The `two-fields`
+and `markers` limitation probes are hand-written, because the encoder refuses
+to produce them. It also writes `unicode-imageio.jpeg` as a
 control using ImageIO's normal UserComment API. The normal native and PNG
 paths use ImageIO; the JPEG probe builds a minimal Exif segment only for its
 own newly generated images. These helpers are not general image editors.

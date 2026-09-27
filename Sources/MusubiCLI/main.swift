@@ -129,6 +129,7 @@ struct MusubiCommand {
         case .comfyUI: "ComfyUI"
         case .automatic1111: "AUTOMATIC1111-compatible"
         case .mochiDiffusionLegacyCaption: "Mochi Diffusion legacy caption"
+        case .mochiDiffusion: "Mochi Diffusion"
         }
     }
 

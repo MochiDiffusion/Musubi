@@ -65,6 +65,8 @@ public enum MetadataFormat: String, Codable, Sendable {
     case drawThings
     /// The semicolon-separated caption written by Mochi Diffusion 2.2 through 6.1.
     case mochiDiffusionLegacyCaption
+    /// Mochi Diffusion's versioned native record. See ``MochiNativeCodec``.
+    case mochiDiffusion
 }
 
 /// The application that the metadata names as its writer.

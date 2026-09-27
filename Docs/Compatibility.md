@@ -55,6 +55,15 @@ There is no single Civitai file format. Musubi 0.1 targets the embedded layouts
 observed in Civitai-produced files and compatibility payloads that Civitai
 commonly ingests.
 
+### Mochi Diffusion native
+
+Musubi reads the versioned native record from the `mochi:Generation` XMP
+property, matched by namespace URI in element or attribute form. A record with
+an unsupported version, a repeated JSON key or a wrong value type produces a
+diagnostic and no interpretation, so a compatibility interpretation in the
+same image stays readable. Mochi-specific details appear as parameters in the
+normalized record. `MochiNativeCodec` also returns them as typed values.
+
 ### Mochi Diffusion legacy
 
 Musubi recognizes the released v2.2-and-later semicolon-delimited caption in
@@ -85,7 +94,7 @@ but are not required for the initial proof-of-concept release.
 
 ## Important 0.1 limitations
 
-- no metadata writing
+- payload encoders only: no container writing yet
 - no preferred interpretation when several are present
 - no complete mapping of arbitrary ComfyUI custom nodes
 - JSON integer literals larger than `Int64` may lose their original spelling in

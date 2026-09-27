@@ -35,6 +35,7 @@ public enum MetadataInspector {
     /// `payloads`.
     public static func interpret(_ payloads: [EmbeddedMetadataPayload]) -> PayloadInterpretation {
         let codecOutputs = [
+            MochiNativeCodec.decode(payloads),
             DrawThingsCodec.decode(payloads),
             MochiLegacyCodec.decode(payloads),
             ComfyUICodec.decode(payloads),

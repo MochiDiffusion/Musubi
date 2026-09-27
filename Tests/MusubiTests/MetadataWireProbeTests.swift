@@ -13,95 +13,122 @@ struct MetadataWireProbeTests {
     private static let namespace = "https://github.com/MochiDiffusion/MochiDiffusion/ns/metadata/1.0/"
     private static let nativePath = "mochi:Generation"
 
+    /// A fixture image's payloads. Records that Mochi can write come from the
+    /// production encoders, so the external readers check their actual output.
+    /// The two limitation probes are hand-written, because the encoder refuses
+    /// to produce them.
     struct Example: Sendable {
         let name: String
-        let prompt: String
-        let details: String
+        let snapshot: MochiGenerationSnapshot
+        /// The complete parameters text of a limitation probe.
+        let handWrittenParameters: String?
 
-        private var isHosted: Bool { name == "hosted" || name == "two-fields" }
+        init(
+            name: String, generation: GenerationRecord, engine: String = "coreml", handWrittenParameters: String? = nil
+        ) {
+            self.name = name
+            self.snapshot = MochiGenerationSnapshot(
+                producer: MetadataProducer(name: "Mochi Diffusion", version: "wire-probe"),
+                generation: generation,
+                details: MochiGenerationDetails(engine: engine, modelKey: "example")
+            )
+            self.handWrittenParameters = handWrittenParameters
+        }
+
+        var prompt: String { snapshot.generation.positivePrompt ?? "" }
 
         var parameters: String {
-            isHosted ? "\(prompt)\n\(details)" : "\(prompt)\nNegative prompt: blur\n\(details)"
+            get throws {
+                if let handWrittenParameters { return handWrittenParameters }
+                return try #require(
+                    A1111ParametersEncoder.encode(snapshot.generation, producer: snapshot.producer).text)
+            }
         }
 
         var native: String {
-            get throws {
-                var generation: [String: Any] = [
-                    "prompt": prompt, "width": 32, "height": 32,
-                    "model": isHosted ? "hosted-example" : "Example",
-                    "generatedAt": "2026-09-10T00:00:00Z",
-                ]
-                if !isHosted {
-                    generation.merge([
-                        "negativePrompt": "blur", "steps": 8, "sampler": "Euler", "cfgScale": 4.5,
-                        "seed": name == "diffusion" ? "4294967296" : "42",
-                    ]) { _, new in new }
-                }
-                if name == "diffusion" {
-                    generation["scheduler"] = "Normal"
-                    generation["denoise"] = 0.42
-                }
-                if name == "unicode" { generation["model"] = "café, \"猫\"" }
-                if name == "resources" {
-                    generation["resources"] = [
-                        [
-                            "kind": "checkpoint", "name": "Example",
-                            "hashes": [["algorithm": "a1111-auto-v2", "value": "0123456789"]],
-                        ],
-                        [
-                            "kind": "lora", "name": "detail", "weight": 0.75, "civitaiModelVersionID": "123456",
-                            "hashes": [["algorithm": "a1111-auto-v2", "value": "abcdef0123"]],
-                        ],
-                    ]
-                }
-                let data = try JSONSerialization.data(
-                    withJSONObject: [
-                        "format": "mochi-diffusion", "version": 1,
-                        "producer": ["application": "Mochi Diffusion", "version": "wire-probe"],
-                        "generation": generation,
-                        "mochi": ["engine": isHosted ? "openai" : "coreml", "modelKey": "example"],
-                    ],
-                    options: [.sortedKeys, .withoutEscapingSlashes]
-                )
-                return String(decoding: data, as: UTF8.self)
-            }
+            get throws { try MochiNativeCodec.encodeJSON(snapshot) }
         }
     }
 
+    private static func generation(
+        prompt: String = "a red cube",
+        seed: String = "42",
+        model: String = "Example",
+        configure: (inout GenerationRecord) -> Void = { _ in }
+    ) -> GenerationRecord {
+        var record = GenerationRecord(
+            positivePrompt: prompt, negativePrompt: "blur", model: model, sampler: "Euler", steps: 8, cfgScale: 4.5,
+            seed: seed, dimensions: PixelDimensions(width: 32, height: 32),
+            generatedAt: Date(timeIntervalSince1970: 1_788_998_400)
+        )
+        configure(&record)
+        return record
+    }
+
+    private static let hosted = GenerationRecord(
+        positivePrompt: "a red cube", model: "hosted-example", dimensions: PixelDimensions(width: 32, height: 32),
+        generatedAt: Date(timeIntervalSince1970: 1_788_998_400)
+    )
+
     static let examples: [Example] = [
         .init(
-            name: "diffusion", prompt: "a red cube",
-            details:
-                "Steps: 8, Sampler: Euler, Schedule type: Normal, CFG scale: 4.5, Seed: 4294967296, Size: 32x32, Model: Example, Denoising strength: 0.42"
-        ),
+            name: "diffusion",
+            generation: generation(seed: "4294967296") {
+                $0.scheduler = "Normal"
+                $0.denoise = 0.42
+            }),
         .init(
-            name: "unicode", prompt: "a café, 猫 🐈\nsecond line: \"blue\" \\ path",
-            details: #"Steps: 8, Sampler: Euler, CFG scale: 4.5, Seed: 42, Size: 32x32, Model: "café, \"猫\"""#
-        ),
+            name: "unicode",
+            generation: generation(prompt: "a café, 猫 🐈\nsecond line: \"blue\" \\ path", model: "café, \"猫\"")),
+        .init(name: "hosted", generation: hosted, engine: "openai"),
         .init(
-            name: "hosted", prompt: "a red cube",
-            details: "Model: hosted-example, Size: 32x32, Software: Mochi Diffusion"),
-        .init(name: "two-fields", prompt: "a red cube", details: "Model: hosted-example, Size: 32x32"),
+            name: "two-fields", generation: hosted, engine: "openai",
+            handWrittenParameters: "a red cube\nModel: hosted-example, Size: 32x32"),
         .init(
             name: "markers",
-            prompt:
-                "a cube\nNegative prompt: these words are part of the positive prompt\nSteps: 99, Model: imagined, Seed: 123",
-            details: "Steps: 8, Sampler: Euler, CFG scale: 4.5, Seed: 42, Size: 32x32, Model: Example"
-        ),
+            generation: generation(
+                prompt:
+                    "a cube\nNegative prompt: these words are part of the positive prompt\nSteps: 99, Model: imagined, Seed: 123"
+            ),
+            handWrittenParameters: """
+                a cube
+                Negative prompt: these words are part of the positive prompt
+                Steps: 99, Model: imagined, Seed: 123
+                Negative prompt: blur
+                Steps: 8, Sampler: Euler, CFG scale: 4.5, Seed: 42, Size: 32x32, Model: Example
+                """),
         .init(
-            name: "resources", prompt: "a red cube",
-            details:
-                #"Steps: 8, Sampler: Euler, CFG scale: 4.5, Seed: 42, Size: 32x32, Model: Example, Model hash: 0123456789, Lora hashes: "detail: abcdef0123", Civitai resources: [{"type":"lora","modelVersionId":123456,"weight":0.75}]"#
-        ),
+            name: "resources",
+            generation: generation {
+                $0.resources = [
+                    GenerationResource(
+                        kind: .checkpoint, name: "Example",
+                        hashes: [ResourceHash(algorithm: .a1111AutoV2, value: "0123456789")]),
+                    GenerationResource(
+                        kind: .lora, name: "detail", weight: 0.75,
+                        hashes: [ResourceHash(algorithm: .a1111AutoV2, value: "abcdef0123")],
+                        civitaiModelVersionID: 123456),
+                ]
+            }),
     ]
+
+    @Test("The encoder refuses the records that the limitation probes describe")
+    func limitationProbesAreRefused() throws {
+        let twoFields = GenerationRecord(model: "hosted-example", dimensions: PixelDimensions(width: 32, height: 32))
+        let markers = try #require(Self.examples.first { $0.name == "markers" }).snapshot
+
+        #expect(A1111ParametersEncoder.encode(twoFields, producer: nil).text == nil)
+        #expect(A1111ParametersEncoder.encode(markers.generation, producer: markers.producer).text == nil)
+    }
 
     @Test("ImageIO retains native XMP and compatibility carriers", arguments: examples)
     func carriers(example: Example) throws {
         let native = try example.native
+        let parameters = try example.parameters
         for type in [UTType.png, .jpeg, .heic] {
             var bytes = try Self.encode(type: type, native: native, parameters: nil)
-            if type == .png { bytes = Self.addParameters(example.parameters, to: bytes) }
-            if type == .jpeg { bytes = try Self.addJPEGComment(example.parameters, toFreshImage: bytes) }
+            if type == .png { bytes = Self.addParameters(parameters, to: bytes) }
+            if type == .jpeg { bytes = try Self.addJPEGComment(parameters, toFreshImage: bytes) }
 
             let source = try #require(CGImageSourceCreateWithData(bytes as CFData, nil))
             #expect(CGImageSourceCreateImageAtIndex(source, 0, nil) != nil)
@@ -117,7 +144,7 @@ struct MetadataWireProbeTests {
                     CGImageMetadataCopyStringValueWithPath(rawMetadata, nil, Self.nativePath as CFString) as String?
                         == native)
                 let keyword = type == .png ? "parameters" : "UserComment"
-                #expect(inspection.payloads.contains { $0.keyword == keyword && $0.text == example.parameters })
+                #expect(inspection.payloads.contains { $0.keyword == keyword && $0.text == parameters })
             }
 
             if let directory = ProcessInfo.processInfo.environment["MUSUBI_WIRE_PROBE_DIR"] {
@@ -126,13 +153,13 @@ struct MetadataWireProbeTests {
                 let filename = "\(example.name).\(type.preferredFilenameExtension!)"
                 try bytes.write(to: root.appendingPathComponent(filename), options: .atomic)
                 let expectation: [String: String] = [
-                    "prompt": example.prompt, "parameters": example.parameters, "native": native,
+                    "prompt": example.prompt, "parameters": parameters, "native": native,
                 ]
                 let json = try JSONSerialization.data(
                     withJSONObject: expectation, options: [.prettyPrinted, .sortedKeys])
                 try json.write(to: root.appendingPathComponent("\(example.name).expected.json"), options: .atomic)
                 if type == .jpeg, example.name == "unicode" {
-                    let control = try Self.encode(type: type, native: native, parameters: example.parameters)
+                    let control = try Self.encode(type: type, native: native, parameters: parameters)
                     try control.write(to: root.appendingPathComponent("unicode-imageio.jpeg"), options: .atomic)
                 }
             }
@@ -142,7 +169,7 @@ struct MetadataWireProbeTests {
     @Test("A native XMP value comfortably exceeds legacy caption limits")
     func longNative() throws {
         let text = String(repeating: "猫🧩, quote\"\\\r\n\0", count: 1000)
-        let example = Example(name: "long", prompt: text, details: "")
+        let example = Example(name: "long", generation: GenerationRecord(positivePrompt: text))
         let native = try example.native
         for type in [UTType.png, .jpeg, .heic] {
             let bytes = try Self.encode(type: type, native: native, parameters: nil)

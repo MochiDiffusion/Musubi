@@ -93,10 +93,10 @@ basenames; never include connection secrets or absolute paths. Additional
 optional keys can be introduced without changing existing meanings. Incompatible
 grammar or semantic changes require a new version.
 
-The probe constructs both a complete synthetic diffusion snapshot and a sparse
-hosted snapshot. It proves carrier fidelity and JSON recovery; the production
-native codec, validation, engine mappings and public API belong to e4v.7/.9/.11.
-It does not claim that a metadata snapshot makes an opaque engine reproducible.
+`MochiNativeCodec` and `A1111ParametersEncoder` implement this contract. The
+probe's fixtures for Mochi output come from them, so the external readers check
+their actual output. Each engine's field mapping belongs to Mochi. A metadata
+snapshot does not make an opaque engine reproducible.
 
 ## Portable projection and known losses
 
@@ -106,6 +106,8 @@ known conventional settings and tested resource extensions; omissions must be
 accounted for in the engine mapping. Quote scalar settings with JSON string
 escaping when punctuation or whitespace would affect parsing. Keep numbers
 locale-independent. Never invent steps, CFG, a sampler, seed or identity.
+Write the producer as `Software: <name> <version>`. Do not use `Version`,
+which names the WebUI version.
 
 The pinned-reader probes establish these boundaries:
 
@@ -209,7 +211,7 @@ Pillow 11.3.0, piexif 1.1.3, and the published
 is pinned by npm integrity, not asserted to equal the GitHub revision inspected
 during the earlier bead review. No live Civitai upload or resource lookup was run.
 
-Implement the small library model/payload APIs, codecs and the PNG writer next.
+The payload codecs are implemented. The PNG writer comes next.
 Keep ImageIO outside Musubi's core target. Library changes can land before
 Mochi integration; pin a reproducible accessible revision before merging the app.
 The probe adds no runtime dependency or production writer to either application.

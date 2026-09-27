@@ -26,6 +26,11 @@ may include source-breaking API refinements and will be called out here.
   extracted, such as XMP from a HEIC image.
 - `GenerationRecord.generatedAt` for metadata that records a generation time.
 - The `Software` setting in AUTOMATIC1111-compatible text names the producer.
+- `MochiNativeCodec` reads and writes Mochi Diffusion's versioned native record
+  as JSON and as an XMP packet. `MochiGenerationSnapshot` holds its values.
+- `A1111ParametersEncoder` writes AUTOMATIC1111-compatible text and reports
+  every value it leaves out. It writes no text when readers would misread it.
+- `MetadataFormat.mochiDiffusion` for native records found during inspection.
 
 ## 0.1.1 - 2026-09-22
 
