@@ -214,7 +214,7 @@ Pillow 11.3.0, piexif 1.1.3, and the published
 is pinned by npm integrity, not asserted to equal the GitHub revision inspected
 during the earlier bead review. No live Civitai upload or resource lookup was run.
 
-The payload codecs are implemented. The PNG writer comes next.
+The payload codecs and `PNGMetadataWriter` are implemented.
 Keep ImageIO outside Musubi's core target. Library changes can land before
 Mochi integration; pin a reproducible accessible revision before merging the app.
 The probe adds no runtime dependency or production writer to either application.

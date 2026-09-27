@@ -46,6 +46,8 @@ may include source-breaking API refinements and will be called out here.
   every value it leaves out. It writes no text when readers would misread it.
   Named LoRAs are appended to the prompt line as `<lora:name:weight>` tags.
 - `MetadataFormat.mochiDiffusion` for native records found during inspection.
+- `PNGMetadataWriter` inserts or replaces the `parameters` chunk and the native
+  XMP chunk, and copies all other chunks and pixel data exactly.
 
 ## 0.1.1 - 2026-09-22
 

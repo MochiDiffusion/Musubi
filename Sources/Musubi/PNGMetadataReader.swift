@@ -115,7 +115,7 @@ enum PNGMetadataReader {
         diagnostics.append(.init(severity: .warning, message: "PNG \(type) chunk has an invalid CRC"))
     }
 
-    private static func decodeTextChunk(
+    static func decodeTextChunk(
         type: String,
         data: Data,
         budget: inout Int

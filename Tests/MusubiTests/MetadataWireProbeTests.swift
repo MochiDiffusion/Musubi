@@ -134,8 +134,17 @@ struct MetadataWireProbeTests {
         let native = try example.native
         let parameters = try example.parameters
         for type in [UTType.png, .jpeg, .heic] {
-            var bytes = try Self.encode(type: type, native: native, parameters: nil)
-            if type == .png { bytes = Self.addParameters(parameters, to: bytes) }
+            var bytes: Data
+            if type == .png {
+                // The production writer adds both carriers to a PNG with no metadata.
+                bytes = try PNGMetadataWriter.write(
+                    PNGMetadataPayloads(
+                        nativeXMPPacket: MochiNativeCodec.encodeXMPPacket(example.snapshot), parameters: parameters),
+                    into: Self.encode(type: .png, native: nil, parameters: nil),
+                    replacingExistingRecords: false)
+            } else {
+                bytes = try Self.encode(type: type, native: native, parameters: nil)
+            }
             if type == .jpeg { bytes = try Self.addJPEGComment(parameters, toFreshImage: bytes) }
 
             let source = try #require(CGImageSourceCreateWithData(bytes as CFData, nil))
@@ -293,22 +302,8 @@ struct MetadataWireProbeTests {
         return output as Data
     }
 
-    /// Inputs are our own ImageIO PNGs. Production chunk validation belongs to e4v.12.
-    private static func addParameters(_ parameters: String, to png: Data) -> Data {
-        let type = Data("iTXt".utf8)
-        let payload = Data("parameters\0\0\0\0\0\(parameters)".utf8)
-        var length = UInt32(payload.count).bigEndian
-        var checksum = CRC32.checksum(type: type, payload: payload).bigEndian
-        var chunk = withUnsafeBytes(of: &length) { Data($0) }
-        chunk.append(type)
-        chunk.append(payload)
-        chunk.append(withUnsafeBytes(of: &checksum) { Data($0) })
-        // The 8-byte signature and fixed 25-byte IHDR are written by ImageIO.
-        return png.prefix(33) + chunk + png.dropFirst(33)
-    }
-
-    /// Replaces only ImageIO's fresh, synthetic Exif. This deliberately does not
-    /// attempt to preserve a foreign TIFF/Exif tree: e4v.13 defines that boundary.
+    /// Replaces only ImageIO's fresh, synthetic Exif. It is a probe helper, not a
+    /// JPEG writer, and does not preserve a foreign TIFF/Exif tree.
     private static func addJPEGComment(_ parameters: String, toFreshImage jpeg: Data) throws -> Data {
         let comment = Data("UNICODE\0".utf8) + (try #require(parameters.data(using: .utf16BigEndian)))
         var tiff = Data("MM".utf8) + integer(UInt16(42)) + integer(UInt32(8))

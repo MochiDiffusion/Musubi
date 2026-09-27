@@ -26,8 +26,9 @@ reference corpus. Unknown source fields remain available in the raw payloads.
 Custom ComfyUI nodes and application updates can produce partial normalized
 results without preventing access to their original graphs.
 
-Writing, WebP, HEIC, general Exif editing, and C2PA validation are not included
-in 0.1.
+Musubi writes Mochi Diffusion's metadata into PNG files: the native record and
+AUTOMATIC1111-compatible text. It does not write other containers. WebP, HEIC,
+general Exif editing and C2PA validation are not included.
 
 ## Requirements
 

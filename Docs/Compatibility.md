@@ -8,7 +8,7 @@ support for every image an application can produce.
 
 | Container | Read carriers | Write |
 | --- | --- | :---: |
-| PNG | `tEXt`, `zTXt`, compressed and uncompressed `iTXt`, `eXIf`, XMP | — |
+| PNG | `tEXt`, `zTXt`, compressed and uncompressed `iTXt`, `eXIf`, XMP | `parameters` and native XMP |
 | JPEG | APP1 Exif, APP1 XMP, COM segments | — |
 | WebP | — | — |
 | HEIC | — | — |
@@ -144,7 +144,8 @@ but are not required for the initial proof-of-concept release.
 
 ## Important 0.1 limitations
 
-- payload encoders only: no container writing yet
+- PNG writing only, and only of the `parameters` chunk and an XMP chunk that
+  holds nothing but Mochi's native record
 - no complete mapping of arbitrary ComfyUI custom nodes
 - JSON integers beyond 64 bits are left out of normalized fields; their raw
   payload remains intact

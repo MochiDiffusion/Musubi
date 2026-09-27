@@ -90,9 +90,12 @@ and external-reader probes. It supersedes the speculative profile API below.
 Payload encoding is implemented. `MochiNativeCodec` writes Mochi's native record
 as JSON and as an XMP packet. `A1111ParametersEncoder` writes
 AUTOMATIC1111-compatible text and lists every value it leaves out. Both take
-the same `MochiGenerationSnapshot`, so the two payloads cannot disagree. PNG
-chunk insertion is not implemented yet. The following overview remains
-architectural context, not a shipped writing API.
+the same `MochiGenerationSnapshot`, so the two payloads cannot disagree.
+`PNGMetadataWriter` places them in a PNG. It owns only the `parameters` chunk
+and an XMP chunk that holds nothing but the native record. It copies every
+other chunk and the pixel data byte for byte, refuses to overwrite foreign XMP,
+and replaces an existing record only when the caller asks. The following
+overview remains architectural context, not a shipped writing API.
 
 Writing is deliberately excluded from 0.1. The intended design has three
 separate concerns:
