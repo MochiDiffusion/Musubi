@@ -180,9 +180,10 @@ Civitai JSON as structured resources. Do not claim it does.
   compatibility. Do not truncate prompts or silently drop required native data.
   Embedded NUL in infotext is unrepresentable; it stays escaped in native JSON.
 
-All reader limits, XML entity/depth handling and malformed-payload isolation
-remain required in e4v.8. The probe's small helpers only operate on synthetic
-ImageIO output and are not production container editors.
+Reader limits, XML entity and depth handling, and malformed-payload isolation
+are described under Limits in [Compatibility](Compatibility.md). The probe's
+small helpers only operate on synthetic ImageIO output and are not production
+container editors.
 
 ## Selection and compatibility
 
@@ -207,7 +208,7 @@ Use the narrow ImageIO-to-payload fallback for HEIC and for legacy captions that
 direct inspection misses. All caption grammar stays in Musubi. Direct and bridged
 results for both variants are recorded separately in `legacy-results.json`.
 
-## Evidence and sequencing
+## Evidence
 
 The recorded environment is macOS 27 beta, Xcode beta / Swift 6.4. Tests verify
 decodable synthetic images, exact native XMP through ImageIO and Musubi's PNG/JPEG
@@ -218,10 +219,26 @@ External evidence uses A1111 commit
 `82a973c04367123ae98bd9abdf80d9eda9b910e2` (downloaded source SHA-256 checked),
 Pillow 11.3.0, piexif 1.1.3, and the published
 `@civitai/generation-metadata` 0.1.0 with a locked dependency graph. The latter
-is pinned by npm integrity, not asserted to equal the GitHub revision inspected
-during the earlier bead review. No live Civitai upload or resource lookup was run.
+is pinned by npm integrity, not asserted to equal a particular GitHub revision.
+Each fixture's `.expected.json` states what both readers must parse, so the same
+readers check any fixture directory.
 
-The payload codecs and `PNGMetadataWriter` are implemented.
-Keep ImageIO outside Musubi's core target. Library changes can land before
-Mochi integration; pin a reproducible accessible revision before merging the app.
-The probe adds no runtime dependency or production writer to either application.
+Mochi Diffusion writes its own fixtures through its generation and export
+paths: Core ML text-to-image, image-to-image with ControlNet and SD3; Iris with
+reference images; a sparse hosted record; a Unicode prompt; a prompt with
+section markers; and released 6.0 JPEG, 6.1.2 HEIC and foreign JPEG images
+converted to PNG. Its `scripts/external_readers.sh` runs these readers against
+them. The results match the table above: complete records are read by both, the
+hosted record only by A1111, and the marker prompt carries no compatibility
+text. Mochi records a model by name only, so the Civitai reader identifies a
+checkpoint without a hash.
+
+A live upload was checked once, on 2026-09-28, with Core ML and Iris PNGs from
+Mochi Diffusion's development build at commit `2bbbed9`. Civitai's upload
+preview filled in the prompt, negative prompt, steps, CFG scale, sampler and
+seed. It did not identify the model, as expected for a name without a hash;
+a hash of a converted Core ML directory would not identify the original
+checkpoint either. Nothing was published, and no resource lookup was run.
+
+ImageIO stays outside Musubi's core target. The probe adds no runtime
+dependency or production writer to either application.

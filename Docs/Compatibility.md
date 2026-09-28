@@ -143,9 +143,12 @@ Private reference images in `example images/` are ignored by Git and used only
 for exploratory manual checks. Their prompts, filenames, and pixels must not
 appear in a public fixture corpus without explicit permission.
 
-Future public fixtures should be tiny, neutral, redistributable, and paired
-with hand-reviewed expected results. Exact producing-app versions are useful
-but are not required for the initial proof-of-concept release.
+The metadata wire probe checks written images with pinned AUTOMATIC1111 and
+Civitai readers. Its fixtures are tiny, neutral synthetic images, each paired
+with hand-reviewed expectations; Mochi Diffusion writes its own fixtures the
+same way. [Tools/MetadataWireProbe](../Tools/MetadataWireProbe/README.md)
+describes how to run it, and the
+[wire contract](MetadataWireContract.md#evidence) records the results.
 
 ## Important 0.1 limitations
 

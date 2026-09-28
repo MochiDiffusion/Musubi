@@ -67,40 +67,30 @@ def main(directory):
     for expected_path in sorted(directory.glob("*.expected.json")):
         name = expected_path.name.removesuffix(".expected.json")
         expected = json.loads(expected_path.read_text())
-        for extension in ("png", "jpeg"):
-            image_path = directory / f"{name}.{extension}"
+        images = [directory / f"{name}.{extension}" for extension in ("png", "jpeg")]
+        images = [path for path in images if path.exists()]
+        assert images, f"No fixture image for {expected_path.name}"
+        for image_path in images:
             with Image.open(image_path) as image:
                 image.load()
                 text, _ = read_image(image)
             assert text == expected["parameters"], f"Carrier changed: {image_path.name}"
-            parsed = parse_text(text, skip_fields=[])
-            if name == "two-fields":
-                assert "Model" not in parsed and expected["parameters"].splitlines()[-1] in parsed["Prompt"]
-            elif name == "markers":
-                assert parsed["Prompt"] == "a cube" and parsed["Steps"] == "8"
-            else:
-                assert parsed["Prompt"] == expected["prompt"], image_path.name
-                assert parsed["Size-1"] == "32" and parsed["Size-2"] == "32"
-            if name in ("hosted", "two-fields"):
-                assert not {"Steps", "Seed", "CFG scale"}.intersection(parsed)
-            if name == "diffusion":
-                assert parsed["Seed"] == "4294967296" and parsed["Denoising strength"] == "0.42"
-                assert parsed["Steps"] == "8" and parsed["CFG scale"] == "4.5"
-                assert parsed["Sampler"] == "Euler" and parsed["Schedule type"] == "Normal"
-                assert parsed["Model"] == "Example" and parsed["Negative prompt"] == "blur"
-            if name == "unicode":
-                assert parsed["Model"] == 'café, "猫"'
-            if name == "resources":
-                assert parsed["Lora hashes"] == "detail: abcdef0123"
-            keys = ("Prompt", "Negative prompt", "Steps", "Seed", "CFG scale", "Sampler", "Schedule type", "Model", "Size-1", "Size-2", "Denoising strength", "Lora hashes", "Civitai resources")
-            report["images"].append({"file": image_path.name, "parsed": {k: parsed[k] for k in keys if k in parsed}})
-    assert len(report["images"]) == 12, "Generate all six fixtures before running this oracle"
-    with Image.open(directory / "unicode-imageio.jpeg") as image:
-        text, _ = read_image(image)
-    original = json.loads((directory / "unicode.expected.json").read_text())["parameters"]
-    report["imageioUnicodeControlPreserved"] = text == original
+            parsed = parse_text(text, skip_fields=[]) if text is not None else {}
+            for key, value in expected["a1111"].items():
+                assert parsed.get(key) == value, f"{image_path.name}: {key} is {parsed.get(key)!r}, not {value!r}"
+            report["images"].append({"file": image_path.name, "parsed": {k: v for k, v in parsed.items() if isinstance(v, str)}})
+    assert report["images"], "Generate fixtures before running this oracle"
+    control = directory / "unicode-imageio.jpeg"
+    if control.exists():
+        with Image.open(control) as image:
+            text, _ = read_image(image)
+        original = json.loads((directory / "unicode.expected.json").read_text())["parameters"]
+        report["imageioUnicodeControlPreserved"] = text == original
     (directory / "a1111-results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-    print(f"A1111: {len(report['images'])} full-image checks passed; ImageIO Unicode control preserved: {text == original}")
+    summary = f"A1111: {len(report['images'])} full-image checks passed"
+    if "imageioUnicodeControlPreserved" in report:
+        summary += f"; ImageIO Unicode control preserved: {report['imageioUnicodeControlPreserved']}"
+    print(summary)
 
 
 if __name__ == "__main__":

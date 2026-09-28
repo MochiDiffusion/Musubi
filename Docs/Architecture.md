@@ -83,61 +83,36 @@ corruption throws a `MetadataInspectionError`.
 
 ## Writing design
 
-The concrete decisions for Mochi integration are in the
-[metadata wire contract](MetadataWireContract.md), backed by executable carrier
-and external-reader probes. It supersedes the speculative profile API below.
+The [metadata wire contract](MetadataWireContract.md) records the carriers,
+encodings, limits and ownership rules for Mochi's output, backed by executable
+carrier and external-reader probes.
 
-Payload encoding is implemented. `MochiNativeCodec` writes Mochi's native record
-as JSON and as an XMP packet. `A1111ParametersEncoder` writes
-AUTOMATIC1111-compatible text and lists every value it leaves out. Both take
-the same `MochiGenerationSnapshot`, so the two payloads cannot disagree.
-The XMP packet may also carry the AUTOMATIC1111 text as `dc:description`,
-which Spotlight imports as the file's description for Finder and search.
-`PNGMetadataWriter` places them in a PNG. It owns only the `parameters` chunk
-and an XMP chunk that holds the native record and at most that description.
-It copies every
-other chunk and the pixel data byte for byte, refuses to overwrite foreign XMP,
-and replaces an existing record only when the caller asks. The following
-overview remains architectural context, not a shipped writing API.
-
-Writing is deliberately excluded from 0.1. The intended design has three
-separate concerns:
-
-1. A `GenerationRecord` describes effective values used for one output image.
-2. An encoding profile creates only the payload it owns, such as an
-   A1111/Civitai-compatible `parameters` value.
-3. A container rewriter inserts or replaces that payload while copying encoded
-   pixels and unrelated metadata byte-for-byte.
-
-Conceptually:
-
-```swift
-let request = MetadataWriteRequest(
-    generation: generation,
-    profiles: [.civitaiCompatible],
-    existingPayloads: .preserveUnowned
-)
-
-let result = try MetadataWriter.rewrite(encodedImageData, using: request)
-```
-
-The concrete API should remain synchronous and `Sendable`, accept and return
-`Data`, report lossy omissions, and never overwrite a source file implicitly.
+`MochiNativeCodec` writes Mochi's native record as JSON and as an XMP packet.
+`A1111ParametersEncoder` writes AUTOMATIC1111-compatible text and lists every
+value it leaves out. Both take the same `MochiGenerationSnapshot`, so the two
+payloads cannot disagree. The XMP packet may also carry the AUTOMATIC1111 text
+as `dc:description`, which Spotlight imports as the file's description for
+Finder and search. `PNGMetadataWriter` places them in a PNG. It owns only the
+`parameters` chunk and an XMP chunk that holds the native record and at most
+that description. It copies every other chunk and the pixel data byte for
+byte, refuses to overwrite foreign XMP, and replaces an existing record only
+when the caller asks. Writing is synchronous, accepts and returns `Data`, and
+never touches a file.
 
 ### Mochi integration seam
 
-Mochi should construct a Musubi record from effective per-image generation
-metadata after its generator has resolved pipeline defaults. Musubi should not
-accept Mochi's UI request or duplicate its capability model.
+Mochi constructs a snapshot from the effective per-image generation values
+after its engine has resolved pipeline defaults. Musubi does not accept Mochi's
+UI request or duplicate its capability model.
 
 ```text
-effective generation metadata + CGImage
+effective generation values + CGImage
                  │
                  ▼
-        ImageIO pixel encoding
+        ImageIO pixel encoding (Mochi)
                  │
                  ▼
-       Musubi metadata rewriting
+       PNGMetadataWriter (Musubi)
                  │
                  ▼
           final encoded image
@@ -147,37 +122,18 @@ Mochi's released IPTC captions remain a separate legacy read codec. The v2.2
 through v6.0 caption joins fields with semicolons, and the v6.1 through v6.1.2
 caption declares `Metadata Version: 2` and writes one escaped field per line.
 The semicolon-delimited values are ambiguous and both omit some settings, so
-the raw caption must remain available. A future Mochi format should be added
-as a new codec rather than changing the legacy grammar.
+the raw caption must remain available. The native record is its own codec, and
+the legacy grammar does not change.
 
 ## Roadmap
 
-### 0.1 — read-only inspection
-
-- PNG and JPEG container scanning
-- Draw Things, ComfyUI, A1111/Civitai, and Mochi legacy decoding
-- raw payload preservation and typed common fields
-- development CLI and synthetic tests
-
-### 0.2 — hardening and normalization
-
-- parser limits for JSON, XML, and graph traversal
-- better ambiguity diagnostics and preferred-result policy
-- broader container and codec edge-case tests
-- small redistributable real-world fixture corpus when available
-
-### 0.3 — PNG compatibility writing
-
-- lossless PNG chunk rewriting
-- A1111/Civitai-compatible payload encoding
-- unchanged `IDAT` and foreign-payload assertions
-- parser-oracle and manual Civitai upload verification
-
-### Later
+Reading, parser hardening and PNG writing for Mochi Diffusion are implemented;
+the changelog lists them. Candidates for later work:
 
 - JPEG writing
 - WebP reading and writing
-- HEIC support appropriate for Mochi
-- the future Mochi metadata codec
+- HEIC container reading; Mochi reads HEIC through ImageIO and
+  `MetadataInspector.interpret(_:)`
+- a small redistributable real-world fixture corpus
 - additional generators driven by obtainable fixtures
 - optional provenance detection or validated C2PA integration

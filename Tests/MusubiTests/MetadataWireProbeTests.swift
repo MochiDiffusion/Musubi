@@ -22,9 +22,12 @@ struct MetadataWireProbeTests {
         let snapshot: MochiGenerationSnapshot
         /// The complete parameters text of a limitation probe.
         let handWrittenParameters: String?
+        /// What the external readers must parse; see ``ReaderExpectations``.
+        let readers: ReaderExpectations
 
         init(
-            name: String, generation: GenerationRecord, engine: String = "coreml", handWrittenParameters: String? = nil
+            name: String, generation: GenerationRecord, engine: String = "coreml", handWrittenParameters: String? = nil,
+            readers: ReaderExpectations
         ) {
             self.name = name
             self.snapshot = MochiGenerationSnapshot(
@@ -33,16 +36,7 @@ struct MetadataWireProbeTests {
                 details: MochiGenerationDetails(engine: engine, modelKey: "example")
             )
             self.handWrittenParameters = handWrittenParameters
-        }
-
-        /// The prompt a reader should find: the typed prompt plus any LoRA tags
-        /// the encoder appended.
-        var prompt: String {
-            get throws {
-                let lines = try parameters.components(separatedBy: "\n").dropLast()
-                let promptLines = lines.prefix { !$0.hasPrefix("Negative prompt:") }
-                return promptLines.joined(separator: "\n")
-            }
+            self.readers = readers
         }
 
         var parameters: String {
@@ -78,20 +72,63 @@ struct MetadataWireProbeTests {
         generatedAt: Date(timeIntervalSince1970: 1_788_998_400)
     )
 
+    /// The values every complete diffusion fixture shares.
+    private static let diffusionA1111: [String: JSONValue] = [
+        "Steps": "8", "Sampler": "Euler", "CFG scale": "4.5", "Size-1": "32", "Size-2": "32", "Model": "Example",
+        "Negative prompt": "blur",
+    ]
+    private static let diffusionCivitai: [String: JSONValue] = [
+        "generator": "automatic1111", "raw.steps": 8, "raw.sampler": "Euler", "raw.cfgScale": 4.5, "raw.width": 32,
+        "raw.height": 32, "raw.negativePrompt": "blur",
+    ]
+
     static let examples: [Example] = [
         .init(
             name: "diffusion",
             generation: generation(seed: "4294967296") {
                 $0.scheduler = "Normal"
                 $0.denoise = 0.42
-            }),
+            },
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a red cube", "Seed": "4294967296", "Schedule type": "Normal",
+                    "Denoising strength": "0.42",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a red cube", "raw.seed": 4_294_967_296, "raw.Schedule type": "Normal",
+                    "raw.Model": "Example", "civitai.generation.denoise": 0.42,
+                ]) { $1 })),
         .init(
             name: "unicode",
-            generation: generation(prompt: "a café, 猫 🐈\nsecond line: \"blue\" \\ path", model: "café, \"猫\"")),
-        .init(name: "hosted", generation: hosted, engine: "openai"),
+            generation: generation(prompt: "a café, 猫 🐈\nsecond line: \"blue\" \\ path", model: "café, \"猫\""),
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a café, 猫 🐈\nsecond line: \"blue\" \\ path", "Model": "café, \"猫\"",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a café, 猫 🐈\nsecond line: \"blue\" \\ path", "raw.Model": "café, \"猫\"",
+                ]) { $1 })),
+        // Hosted images without Steps are not recognized by the Civitai reader.
+        .init(
+            name: "hosted", generation: hosted, engine: "openai",
+            readers: ReaderExpectations(
+                a1111: [
+                    "Prompt": "a red cube", "Size-1": "32", "Size-2": "32", "Model": "hosted-example", "Steps": nil,
+                    "Seed": nil, "CFG scale": nil,
+                ],
+                civitai: ["generator": nil, "raw": [:]])),
+        // A1111 treats a details line of only two fields as prompt text.
         .init(
             name: "two-fields", generation: hosted, engine: "openai",
-            handWrittenParameters: "a red cube\nModel: hosted-example, Size: 32x32"),
+            handWrittenParameters: "a red cube\nModel: hosted-example, Size: 32x32",
+            readers: ReaderExpectations(
+                a1111: [
+                    "Prompt": "a red cube\nModel: hosted-example, Size: 32x32", "Model": nil, "Steps": nil,
+                    "Seed": nil, "CFG scale": nil,
+                ],
+                civitai: ["generator": nil, "raw": [:]])),
+        // Section markers inside a prompt change what both readers take as the
+        // prompt and settings.
         .init(
             name: "markers",
             generation: generation(
@@ -104,7 +141,12 @@ struct MetadataWireProbeTests {
                 Steps: 99, Model: imagined, Seed: 123
                 Negative prompt: blur
                 Steps: 8, Sampler: Euler, CFG scale: 4.5, Seed: 42, Size: 32x32, Model: Example
-                """),
+                """,
+            readers: ReaderExpectations(
+                a1111: ["Prompt": "a cube", "Steps": "8"],
+                civitai: ["raw.prompt": "a cube", "raw.steps": 99])),
+        // Resource hashes, IDs and weights are extracted; no real resource is
+        // looked up.
         .init(
             name: "resources",
             generation: generation {
@@ -117,7 +159,24 @@ struct MetadataWireProbeTests {
                         hashes: [ResourceHash(algorithm: .a1111AutoV2, value: "abcdef0123")],
                         civitaiModelVersionID: 123456),
                 ]
-            }),
+            },
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a red cube <lora:detail:0.75>", "Lora hashes": "detail: abcdef0123",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a red cube <lora:detail:0.75>", "raw.hashes.model": "0123456789",
+                    "raw.hashes.lora:detail": "abcdef0123",
+                    "raw.civitaiResources": [["type": "lora", "weight": 0.75, "modelVersionId": 123456]],
+                    // The prompt's <lora:> tag joins the LoRA's name, weight, hash
+                    // and version ID into one resource.
+                    "civitai.generation.prompt": "a red cube",
+                    "civitai.generation.resources.0.kind": "lora",
+                    "civitai.generation.resources.0.name": "detail",
+                    "civitai.generation.resources.0.weight": 0.75,
+                    "civitai.generation.resources.0.hash": "abcdef0123",
+                    "civitai.generation.resources.0.modelVersionId": 123456,
+                ]) { $1 })),
     ]
 
     @Test("The encoder refuses the records that the limitation probes describe")
@@ -169,12 +228,10 @@ struct MetadataWireProbeTests {
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
                 let filename = "\(example.name).\(type.preferredFilenameExtension!)"
                 try bytes.write(to: root.appendingPathComponent(filename), options: .atomic)
-                let expectation: [String: String] = [
-                    "prompt": try example.prompt, "parameters": parameters, "native": native,
-                ]
-                let json = try JSONSerialization.data(
-                    withJSONObject: expectation, options: [.prettyPrinted, .sortedKeys])
-                try json.write(to: root.appendingPathComponent("\(example.name).expected.json"), options: .atomic)
+                let expectation = FixtureExpectation(
+                    parameters: parameters, native: native, a1111: example.readers.a1111,
+                    civitai: example.readers.civitai)
+                try expectation.write(to: root.appendingPathComponent("\(example.name).expected.json"))
                 if type == .jpeg, example.name == "unicode" {
                     let control = try Self.encode(type: type, native: native, parameters: parameters)
                     try control.write(to: root.appendingPathComponent("unicode-imageio.jpeg"), options: .atomic)
@@ -186,7 +243,10 @@ struct MetadataWireProbeTests {
     @Test("A native XMP value comfortably exceeds legacy caption limits")
     func longNative() throws {
         let text = String(repeating: "猫🧩, quote\"\\\r\n\0", count: 1000)
-        let example = Example(name: "long", generation: GenerationRecord(positivePrompt: text))
+        // Only the native record is checked, so no external reader sees it.
+        let example = Example(
+            name: "long", generation: GenerationRecord(positivePrompt: text),
+            readers: ReaderExpectations(a1111: [:], civitai: [:]))
         let native = try example.native
         for type in [UTType.png, .jpeg, .heic] {
             let bytes = try Self.encode(type: type, native: native, parameters: nil)
