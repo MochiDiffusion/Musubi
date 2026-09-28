@@ -63,7 +63,8 @@ public enum MetadataFormat: String, Codable, Sendable {
     case comfyUI
     /// Draw Things XMP with a JSON configuration.
     case drawThings
-    /// The semicolon-separated caption written by Mochi Diffusion 2.2 through 6.1.
+    /// The IPTC caption written by Mochi Diffusion 2.2 through 6.1.2: fields
+    /// joined by `"; "` through 6.0, and one escaped field per line from 6.1.
     case mochiDiffusionLegacyCaption
     /// Mochi Diffusion's versioned native record. See ``MochiNativeCodec``.
     case mochiDiffusion

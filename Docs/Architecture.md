@@ -140,10 +140,12 @@ effective generation metadata + CGImage
           final encoded image
 ```
 
-The classic Mochi v2.2-and-later caption remains a separate legacy read codec.
-Its semicolon-delimited values are ambiguous and omit some settings, so the raw
-caption must remain available. A future Mochi format should be added as a new
-codec rather than changing the legacy grammar.
+Mochi's released IPTC captions remain a separate legacy read codec. The v2.2
+through v6.0 caption joins fields with semicolons, and the v6.1 through v6.1.2
+caption declares `Metadata Version: 2` and writes one escaped field per line.
+The semicolon-delimited values are ambiguous and both omit some settings, so
+the raw caption must remain available. A future Mochi format should be added
+as a new codec rather than changing the legacy grammar.
 
 ## Roadmap
 

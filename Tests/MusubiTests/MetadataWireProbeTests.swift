@@ -218,14 +218,28 @@ struct MetadataWireProbeTests {
 
     @Test("Released Mochi captions retain a library parsing route in all current formats")
     func legacyCarriers() throws {
-        let caption =
-            "Include in Image: a cube; Model: Example; Seed: 42; Steps: 8; Size: 32x32; Generator: Mochi Diffusion 6.0"
+        let captions = [
+            "6.0":
+                "Include in Image: a cube; Model: Example; Seed: 42; Steps: 8; Size: 32x32; Generator: Mochi Diffusion 6.0",
+            "6.1.2": """
+            Metadata Version: 2
+            Include in Image: a cube
+            Model: Example
+            Seed: 42
+            Steps: 8
+            Size: 32x32
+            Generator: Mochi Diffusion 6.1.2
+            """,
+        ]
         var report: [[String: Any]] = []
-        for variant in ["released", "caption-only"] {
+        let cases = captions.sorted { $0.key < $1.key }.flatMap { release, caption in
+            ["released", "caption-only"].map { (release: release, caption: caption, variant: $0) }
+        }
+        for (release, caption, variant) in cases {
             var legacyProperties = [kCGImagePropertyIPTCCaptionAbstract: caption]
             if variant == "released" {
                 legacyProperties[kCGImagePropertyIPTCOriginatingProgram] = "Mochi Diffusion"
-                legacyProperties[kCGImagePropertyIPTCProgramVersion] = "6.0"
+                legacyProperties[kCGImagePropertyIPTCProgramVersion] = release
             }
             for type in [UTType.png, .jpeg, .heic] {
                 let bytes = try Self.encode(
@@ -246,7 +260,8 @@ struct MetadataWireProbeTests {
                     }
                 if variant == "released", type != .heic { #expect(direct) }
                 report.append([
-                    "variant": variant, "format": type.preferredFilenameExtension!, "imageIOBridge": true,
+                    "release": release, "variant": variant,
+                    "format": type.preferredFilenameExtension!, "imageIOBridge": true,
                     "directMusubi": direct,
                 ])
             }

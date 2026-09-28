@@ -186,10 +186,10 @@ native values from a different interpretation. Multiple unrelated records or
 unresolved ComfyUI stages remain ambiguous. This is interpretation policy,
 not verification of provenance or an assertion that embedded data is truthful.
 
-Continue reading released Mochi's semicolon captions. No legacy transition
+Continue reading released Mochi's captions: the semicolon caption of 2.2
+through 6.0 and the line caption of 6.1 through 6.1.2. No legacy transition
 payload is written, and old Mochi reading the new native format is not required.
-The unreleased newline-caption format is superseded and is not added as a
-new legacy contract. This does not rewrite existing files.
+This does not rewrite existing files.
 
 Reproducing the released writer, including its program-name/version tags,
 produces PNG/JPEG files that Musubi reads directly. A separate caption-only

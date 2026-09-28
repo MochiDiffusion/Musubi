@@ -116,9 +116,14 @@ normalized record. `MochiNativeCodec` also returns them as typed values.
 
 ### Mochi Diffusion legacy
 
-Musubi recognizes the released v2.2-and-later semicolon-delimited caption in
-PNG and JPEG XMP. The legacy format cannot escape every possible prompt or
-filename, so parsing is necessarily best-effort and the raw XMP is preserved.
+Musubi recognizes both released Mochi captions in PNG and JPEG XMP. Versions
+2.2 through 6.0 wrote a semicolon-delimited caption that cannot escape every
+possible prompt or filename, so parsing it is necessarily best-effort. Versions
+6.1 through 6.1.2 wrote `Metadata Version: 2` on the first line and then one
+`Label: value` field per line, escaping backslash, line feed and carriage
+return; `Input Images` repeats once per image and is reported as one
+`Input Image` parameter each. A caption declaring any other version is not
+read. The raw XMP is preserved in every case.
 The caption's `Scheduler` names a sampling method, so Musubi reports it as the
 sampler.
 

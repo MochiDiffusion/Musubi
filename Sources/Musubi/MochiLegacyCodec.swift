@@ -18,6 +18,12 @@ enum MochiLegacyCodec {
         "Generator",
     ]
 
+    /// Labels only the version 2 caption writes.
+    private static let versionTwoLabels = ["Engine", "Model Key"]
+
+    /// The first line of a version 2 caption names its version under this label.
+    private static let versionLabel = "Metadata Version"
+
     static func decode(_ payloads: [EmbeddedMetadataPayload]) -> CodecOutput {
         var output = CodecOutput()
 
@@ -46,7 +52,12 @@ enum MochiLegacyCodec {
     }
 
     private static func parseCaption(_ caption: String) -> ParsedCaption? {
-        let fields = fields(in: caption)
+        let fields: [(label: String, value: String)]
+        switch captionVersion(caption) {
+        case nil: fields = semicolonFields(in: caption)
+        case 2: fields = lineFields(in: caption)
+        default: return nil
+        }
         let values = Dictionary(fields.map { ($0.label, $0.value) }) { first, _ in first }
         guard let generator = values["Generator"], generator.hasPrefix("Mochi Diffusion"),
             values["Include in Image"] != nil
@@ -84,8 +95,58 @@ enum MochiLegacyCodec {
         )
     }
 
-    /// The caption's fields in caption order.
-    private static func fields(in caption: String) -> [(label: String, value: String)] {
+    /// The version a caption declares on its first line, or `nil` for the
+    /// version 1 caption, which declares none.
+    private static func captionVersion(_ caption: String) -> Int? {
+        let firstLine = caption.components(separatedBy: "\n")[0]
+        guard firstLine.hasPrefix("\(versionLabel): ") else { return nil }
+        return Int(firstLine.dropFirst(versionLabel.count + 2).trimmingCharacters(in: .whitespaces)) ?? 0
+    }
+
+    /// The fields of a version 2 caption, written by Mochi Diffusion 6.1
+    /// through 6.1.2, in caption order.
+    ///
+    /// Each line is one `Label: value` field, and a value escapes backslash,
+    /// line feed and carriage return. `Input Images` repeats once per image, so
+    /// each becomes its own `Input Image` field. Unknown labels are skipped.
+    private static func lineFields(in caption: String) -> [(label: String, value: String)] {
+        caption.components(separatedBy: "\n").compactMap { line in
+            guard let colon = line.firstIndex(of: ":") else { return nil }
+            let label = String(line[..<colon])
+            guard labels.contains(label) || versionTwoLabels.contains(label) else { return nil }
+            var value = line[line.index(after: colon)...]
+            if value.first == " " { value = value.dropFirst() }
+            return (label == "Input Images" ? "Input Image" : label, unescape(value))
+        }
+    }
+
+    /// Reverses the version 2 escapes. A malformed escape is kept as written.
+    private static func unescape(_ value: Substring) -> String {
+        var result = ""
+        var scalars = value.unicodeScalars.makeIterator()
+        while let scalar = scalars.next() {
+            guard scalar == "\\" else {
+                result.unicodeScalars.append(scalar)
+                continue
+            }
+            switch scalars.next() {
+            case "n": result += "\n"
+            case "r": result += "\r"
+            case "\\": result += "\\"
+            case let other?:
+                result += "\\"
+                result.unicodeScalars.append(other)
+            case nil: result += "\\"
+            }
+        }
+        return result
+    }
+
+    /// The fields of a version 1 caption, written by Mochi Diffusion 2.2
+    /// through 6.0, in caption order. Fields are joined by `"; "` and values
+    /// are not escaped, so a field ends at the next `"; "` that is followed by
+    /// a known label.
+    private static func semicolonFields(in caption: String) -> [(label: String, value: String)] {
         var result: [(label: String, value: String)] = []
         var cursor = caption.startIndex
 

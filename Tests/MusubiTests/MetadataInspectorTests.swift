@@ -88,6 +88,82 @@ struct MetadataInspectorTests {
             ])
     }
 
+    @Test("Mochi 6.1 line caption is normalized from XMP")
+    func mochiLineCaptionXMP() throws {
+        let caption = """
+            Metadata Version: 2
+            Include in Image: a red; blue cube\\nsecond line
+            Exclude from Image: back\\\\slash
+            Model: Example
+            Engine: coreml
+            Model Key: example-model
+            Steps: 8
+            Guidance Scale: 4.5
+            Seed: 42
+            Size: 64x32
+            Input Images: first, one.png
+            Input Images: second.png
+            Scheduler: DPM-Solver++
+            ML Compute Unit: CPU & GPU
+            Generator: Mochi Diffusion 6.1.2
+            """
+        let generation = try #require(legacyGeneration(caption: caption))
+
+        #expect(generation.producer == MetadataProducer(name: "Mochi Diffusion", version: "6.1.2"))
+        #expect(generation.record.positivePrompt == "a red; blue cube\nsecond line")
+        #expect(generation.record.negativePrompt == "back\\slash")
+        #expect(generation.record.model == "Example")
+        #expect(generation.record.steps == 8)
+        #expect(generation.record.cfgScale == 4.5)
+        #expect(generation.record.seed == "42")
+        #expect(generation.record.dimensions == PixelDimensions(width: 64, height: 32))
+        #expect(generation.record.sampler == "DPM-Solver++")
+        #expect(
+            generation.record.parameters == [
+                GenerationParameter(key: "Engine", value: "coreml"),
+                GenerationParameter(key: "Model Key", value: "example-model"),
+                GenerationParameter(key: "Input Image", value: "first, one.png"),
+                GenerationParameter(key: "Input Image", value: "second.png"),
+                GenerationParameter(key: "ML Compute Unit", value: "CPU & GPU"),
+            ])
+    }
+
+    @Test("A Mochi caption of an unknown version is not read")
+    func mochiUnknownCaptionVersion() throws {
+        let caption = """
+            Metadata Version: 3
+            Include in Image: a cube
+            Generator: Mochi Diffusion 7.0
+            """
+        #expect(legacyGeneration(caption: caption) == nil)
+    }
+
+    private func legacyGeneration(caption: String) -> (
+        producer: MetadataProducer?, record: GenerationRecord
+    )? {
+        let escaped =
+            caption
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+        let xmp = """
+            <x:xmpmeta xmlns:x="adobe:ns:meta/">
+              <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+                  <dc:description><rdf:Alt><rdf:li xml:lang="x-default">\(escaped)</rdf:li></rdf:Alt></dc:description>
+                </rdf:Description>
+              </rdf:RDF>
+            </x:xmpmeta>
+            """
+        let payload = EmbeddedMetadataPayload(kind: .xmp, data: Data(xmp.utf8), text: xmp)
+        guard
+            let interpretation = MetadataInspector.interpret([payload]).interpretations.first(where: {
+                $0.format == .mochiDiffusionLegacyCaption
+            }),
+            let record = interpretation.generations.first
+        else { return nil }
+        return (interpretation.producer, record)
+    }
+
     @Test("Mochi legacy JPEG accepts ImageIO XMP packet wrappers")
     func mochiLegacyJPEGXMPPacket() throws {
         let caption = "Include in Image: a cube; Seed: 42; Size: 64x32; Generator: Mochi Diffusion 6.0"
