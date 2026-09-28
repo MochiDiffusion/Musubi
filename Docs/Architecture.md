@@ -91,8 +91,11 @@ Payload encoding is implemented. `MochiNativeCodec` writes Mochi's native record
 as JSON and as an XMP packet. `A1111ParametersEncoder` writes
 AUTOMATIC1111-compatible text and lists every value it leaves out. Both take
 the same `MochiGenerationSnapshot`, so the two payloads cannot disagree.
+The XMP packet may also carry the AUTOMATIC1111 text as `dc:description`,
+which Spotlight imports as the file's description for Finder and search.
 `PNGMetadataWriter` places them in a PNG. It owns only the `parameters` chunk
-and an XMP chunk that holds nothing but the native record. It copies every
+and an XMP chunk that holds the native record and at most that description.
+It copies every
 other chunk and the pixel data byte for byte, refuses to overwrite foreign XMP,
 and replaces an existing record only when the caller asks. The following
 overview remains architectural context, not a shipped writing API.

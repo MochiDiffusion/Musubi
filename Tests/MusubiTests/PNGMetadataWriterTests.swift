@@ -68,6 +68,29 @@ struct PNGMetadataWriterTests {
         #expect(inspection.diagnostics.isEmpty)
     }
 
+    @Test("The description is Finder's and is ignored as generation metadata")
+    func description() throws {
+        let description = "a red cube <&>\r\nSteps: 8, Seed: 42"
+        let payloads = PNGMetadataPayloads(
+            nativeXMPPacket: try MochiNativeCodec.encodeXMPPacket(Self.snapshot, description: description),
+            parameters: try Self.payloads.parameters)
+
+        let written = try PNGMetadataWriter.write(payloads, into: Self.imageIOPNG(), replacingExistingRecords: false)
+        let inspection = try MetadataInspector.inspect(written)
+        let source = try #require(CGImageSourceCreateWithData(written as CFData, nil))
+        let metadata = try #require(CGImageSourceCopyMetadataAtIndex(source, 0, nil))
+
+        #expect(
+            CGImageMetadataCopyStringValueWithPath(metadata, nil, "dc:description" as CFString) as String?
+                == description)
+        #expect(inspection.interpretations.map(\.format) == [.mochiDiffusion, .automatic1111])
+        #expect(inspection.selection == .selected(GenerationReference(interpretation: 0, generation: 0)))
+        #expect(inspection.diagnostics.isEmpty)
+        #expect(throws: Never.self) {
+            try PNGMetadataWriter.write(Self.payloads, into: written, replacingExistingRecords: true)
+        }
+    }
+
     @Test("Pixel data and every unowned chunk keep their exact bytes and order")
     func preservesUnownedChunks() throws {
         let foreignXMP = """

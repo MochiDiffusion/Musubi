@@ -37,7 +37,7 @@ public enum PNGMetadataWriterError: Error, Equatable, Sendable {
 ///
 /// The writer owns two carriers: the `parameters` text chunk, in any of its
 /// `tEXt`, `zTXt` or `iTXt` forms, and an XMP chunk that holds only Mochi's
-/// native record. It copies every other chunk, the encoded pixel data and any
+/// native record and its optional `dc:description`. It copies every other chunk, the encoded pixel data and any
 /// bytes after `IEND` exactly as they were. New chunks are uncompressed UTF-8
 /// `iTXt` placed directly after `IHDR`, the placement the pinned external
 /// readers were tested with. Writing the same payloads again gives the same
@@ -123,8 +123,9 @@ public enum PNGMetadataWriter {
         return String(data: payload[payload.startIndex..<separator], encoding: .isoLatin1)
     }
 
-    /// An XMP packet is Musubi's to replace only when its sole property is
-    /// Mochi's native record. A packet that cannot be read is not Musubi's.
+    /// An XMP packet is Musubi's to replace only when it holds Mochi's native
+    /// record and, at most, the `dc:description` written with it. A packet that
+    /// cannot be read is not Musubi's.
     private static func isOwnedXMP(_ chunk: PNGChunkFile.Chunk) -> Bool {
         var budget = InputLimits.decompressedBytes
         guard
@@ -136,7 +137,9 @@ public enum PNGMetadataWriter {
         guard (try? UntrustedXML.parse(text, delegate: properties, processNamespaces: true)) != nil else {
             return false
         }
-        return properties.names == [MochiNativeCodec.namespace + MochiNativeCodec.propertyName]
+        let native = MochiNativeCodec.namespace + MochiNativeCodec.propertyName
+        let description = MochiNativeCodec.dublinCoreNamespace + "description"
+        return properties.names.contains(native) && properties.names.isSubset(of: [native, description])
     }
 
     // MARK: - Encoding

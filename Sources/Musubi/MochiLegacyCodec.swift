@@ -28,7 +28,8 @@ enum MochiLegacyCodec {
         var output = CodecOutput()
 
         for (index, payload) in payloads.enumerated() where payload.kind == .xmp {
-            guard let xmp = payload.text,
+            // The description written beside a native record is not a caption.
+            guard let xmp = payload.text, !xmp.contains(MochiNativeCodec.namespace),
                 let caption = XMPDescription.parse(xmp),
                 let parsed = parseCaption(caption)
             else { continue }

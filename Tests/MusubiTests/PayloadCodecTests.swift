@@ -281,6 +281,17 @@ struct PayloadCodecTests {
         #expect(throws: error) { try MochiNativeCodec.encodeJSON(snapshot) }
     }
 
+    @Test(
+        "A description XML cannot carry, or one that overfills the packet, is left out",
+        arguments: ["a\u{1}b", String(repeating: "x", count: MochiNativeCodec.maximumPacketSize)])
+    func omittedDescription(description: String) throws {
+        let snapshot = MochiGenerationSnapshot(producer: Self.producer, generation: Self.diffusion)
+
+        let packet = try MochiNativeCodec.encodeXMPPacket(snapshot, description: description)
+
+        #expect(packet == (try MochiNativeCodec.encodeXMPPacket(snapshot)))
+    }
+
     @Test("A packet over the size limit is refused")
     func oversizedPacket() {
         let snapshot = MochiGenerationSnapshot(

@@ -150,7 +150,7 @@ but are not required for the initial proof-of-concept release.
 ## Important 0.1 limitations
 
 - PNG writing only, and only of the `parameters` chunk and an XMP chunk that
-  holds nothing but Mochi's native record
+  holds Mochi's native record and at most its `dc:description`
 - no complete mapping of arbitrary ComfyUI custom nodes
 - JSON integers beyond 64 bits are left out of normalized fields; their raw
   payload remains intact

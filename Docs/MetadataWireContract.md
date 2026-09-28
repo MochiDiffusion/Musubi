@@ -38,6 +38,13 @@ The string contains UTF-8 JSON, with normal JSON escaping inside the XMP XML
 encoding. Do not put JSON in the legacy caption, in `exif:UserComment`, or in
 an unversioned serialization of a public Swift type.
 
+The same packet may set `dc:description` to the AUTOMATIC1111 text, as an
+`x-default` language alternative. Spotlight imports it as `kMDItemDescription`,
+so Finder's Get Info shows it and Spotlight search matches the prompt. It
+repeats the record for people and is never read back as generation metadata.
+It is omitted when it holds a character XML cannot carry or would push the
+packet over the size limit; the record itself is never dropped for it.
+
 For PNG parameters, compression flag and method are zero; language tag and
 translated keyword are empty. Use UTF-8 even for ASCII text, allowing one
 predictable carrier. The existing reader still accepts tEXt/zTXt variants.

@@ -17,6 +17,8 @@ public enum MochiNativeCodec {
     public static let maximumPacketSize = 60 * 1_024
 
     static let formatName = "mochi-diffusion"
+    /// The Dublin Core namespace of the optional `dc:description` property.
+    static let dublinCoreNamespace = "http://purl.org/dc/elements/1.1/"
 
     // MARK: - Encoding
 
@@ -33,27 +35,54 @@ public enum MochiNativeCodec {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Encodes `snapshot` as a complete XMP packet that holds only the native
-    /// property.
+    /// Encodes `snapshot` as a complete XMP packet that holds the native
+    /// property and, optionally, a description.
+    ///
+    /// Spotlight imports `dc:description` as the file's description, which
+    /// Finder shows in Get Info and search matches. The description only
+    /// repeats what the record holds, so it is left out when it contains a
+    /// character XML cannot carry or would make the packet exceed
+    /// ``maximumPacketSize``.
+    /// - Parameter description: Text for `dc:description`, such as the
+    ///   AUTOMATIC1111 text written beside the record.
     /// - Throws: ``MochiNativeCodecError/packetTooLarge(_:)`` when the packet
-    ///   exceeds ``maximumPacketSize``, or another error when a value cannot be
-    ///   represented.
-    public static func encodeXMPPacket(_ snapshot: MochiGenerationSnapshot) throws -> String {
+    ///   exceeds ``maximumPacketSize`` without a description, or another error
+    ///   when a value cannot be represented.
+    public static func encodeXMPPacket(
+        _ snapshot: MochiGenerationSnapshot,
+        description: String? = nil
+    ) throws -> String {
         let json = try encodeJSON(snapshot)
-        let packet = """
+        if let description, description.unicodeScalars.allSatisfy(isXMLCharacter) {
+            let packet = packet(json: json, description: description)
+            if packet.utf8.count <= maximumPacketSize { return packet }
+        }
+        let packet = packet(json: json, description: nil)
+        let size = packet.utf8.count
+        guard size <= maximumPacketSize else { throw MochiNativeCodecError.packetTooLarge(size) }
+        return packet
+    }
+
+    private static func packet(json: String, description: String?) -> String {
+        let descriptionNamespace = description.map { _ in " xmlns:dc=\"\(dublinCoreNamespace)\"" } ?? ""
+        let descriptionProperty =
+            description.map {
+                """
+
+                   <dc:description><rdf:Alt><rdf:li xml:lang="x-default">\(escapeXML($0))</rdf:li></rdf:Alt></dc:description>
+                """
+            } ?? ""
+        return """
             <?xpacket begin="\u{FEFF}" id="W5M0MpCehiHzreSzNTczkc9d"?>
             <x:xmpmeta xmlns:x="adobe:ns:meta/">
              <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-              <rdf:Description rdf:about="" xmlns:mochi="\(namespace)">
-               <mochi:\(propertyName)>\(escapeXML(json))</mochi:\(propertyName)>
+              <rdf:Description rdf:about="" xmlns:mochi="\(namespace)"\(descriptionNamespace)>
+               <mochi:\(propertyName)>\(escapeXML(json))</mochi:\(propertyName)>\(descriptionProperty)
               </rdf:Description>
              </rdf:RDF>
             </x:xmpmeta>
             <?xpacket end="w"?>
             """
-        let size = packet.utf8.count
-        guard size <= maximumPacketSize else { throw MochiNativeCodecError.packetTooLarge(size) }
-        return packet
     }
 
     // MARK: - Decoding
@@ -152,11 +181,22 @@ public enum MochiNativeCodec {
         }
     }
 
+    /// Escapes markup, and carriage return, which XML parsing would otherwise
+    /// turn into a line feed.
     private static func escapeXML(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\r", with: "&#xD;")
+    }
+
+    /// Whether XML 1.0 can carry `scalar` at all, escaped or not.
+    private static func isXMLCharacter(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x9, 0xA, 0xD, 0x20...0xD7FF, 0xE000...0xFFFD, 0x10000...0x10FFFF: true
+        default: false
+        }
     }
 }
 
