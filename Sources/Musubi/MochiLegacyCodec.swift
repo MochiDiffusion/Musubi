@@ -47,6 +47,28 @@ enum MochiLegacyCodec {
         return output
     }
 
+    /// Mochi's details among a caption's fields that have no common meaning.
+    static func details(_ parameters: [GenerationParameter]) -> MochiGenerationDetails {
+        func value(_ key: String) -> String? {
+            parameters.first { $0.key == key }?.value
+        }
+        let listed = parameters.filter { $0.key == "Input Image" }.map(\.value)
+        let joined = value("Input Images").map { images in
+            images.components(separatedBy: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+        return MochiGenerationDetails(
+            engine: value("Engine"),
+            modelKey: value("Model Key"),
+            quality: value("Quality"),
+            computeUnit: value("ML Compute Unit"),
+            startingImage: value("Starting Image"),
+            controlNetImage: value("ControlNet Image"),
+            inputImages: listed.isEmpty ? joined : listed
+        )
+    }
+
     private struct ParsedCaption {
         let version: String?
         let summary: GenerationRecord

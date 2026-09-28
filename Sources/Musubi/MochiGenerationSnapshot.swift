@@ -60,3 +60,32 @@ public struct MochiGenerationDetails: Equatable, Sendable {
         self.inputImages = inputImages
     }
 }
+
+extension MochiGenerationDetails {
+    /// The Mochi details that `interpretation` records, or `nil` when it is not
+    /// a Mochi Diffusion record.
+    ///
+    /// A native record's details are read from its payload. A released caption's
+    /// details come from its fields. The 6.1 caption lists each input image
+    /// separately; earlier captions join them with commas, so a name that
+    /// contains a comma cannot be recovered from them.
+    /// - Parameters:
+    ///   - interpretation: An interpretation of `payloads`.
+    ///   - payloads: The payloads the interpretation indexes, such as
+    ///     ``MetadataInspection/payloads``.
+    public init?(_ interpretation: MetadataInterpretation, payloads: [EmbeddedMetadataPayload]) {
+        switch interpretation.format {
+        case .mochiDiffusion:
+            guard let index = interpretation.payloadIndices.first, payloads.indices.contains(index),
+                let text = payloads[index].text,
+                let snapshot = try? MochiNativeCodec.decodeXMPPacket(text)
+            else { return nil }
+            self = snapshot.details
+        case .mochiDiffusionLegacyCaption:
+            guard let generation = interpretation.generations.first else { return nil }
+            self = MochiLegacyCodec.details(generation.parameters)
+        case .automatic1111, .comfyUI, .drawThings:
+            return nil
+        }
+    }
+}

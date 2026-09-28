@@ -141,6 +141,15 @@ struct MetadataInspectorTests {
     private func legacyGeneration(caption: String) -> (
         producer: MetadataProducer?, record: GenerationRecord
     )? {
+        guard let (interpretation, _) = legacyInterpretation(caption: caption),
+            let record = interpretation.generations.first
+        else { return nil }
+        return (interpretation.producer, record)
+    }
+
+    /// The legacy caption interpretation of `caption` in an ImageIO-style XMP
+    /// packet, and the payloads it indexes.
+    private func legacyInterpretation(caption: String) -> (MetadataInterpretation, [EmbeddedMetadataPayload])? {
         let escaped =
             caption
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -154,14 +163,70 @@ struct MetadataInspectorTests {
               </rdf:RDF>
             </x:xmpmeta>
             """
-        let payload = EmbeddedMetadataPayload(kind: .xmp, data: Data(xmp.utf8), text: xmp)
+        let payloads = [EmbeddedMetadataPayload(kind: .xmp, data: Data(xmp.utf8), text: xmp)]
         guard
-            let interpretation = MetadataInspector.interpret([payload]).interpretations.first(where: {
+            let interpretation = MetadataInspector.interpret(payloads).interpretations.first(where: {
                 $0.format == .mochiDiffusionLegacyCaption
-            }),
-            let record = interpretation.generations.first
+            })
         else { return nil }
-        return (interpretation.producer, record)
+        return (interpretation, payloads)
+    }
+
+    @Test("A 6.0 caption's Mochi details include its comma-joined input images")
+    func mochiSemicolonCaptionDetails() throws {
+        let caption =
+            "Include in Image: a cube; Quality: high; Starting Image: start.png; Input Images: first.png, second.png; ML Compute Unit: CPU & GPU; Generator: Mochi Diffusion 6.0"
+        let (interpretation, payloads) = try #require(legacyInterpretation(caption: caption))
+
+        #expect(
+            MochiGenerationDetails(interpretation, payloads: payloads)
+                == MochiGenerationDetails(
+                    quality: "high", computeUnit: "CPU & GPU", startingImage: "start.png",
+                    inputImages: ["first.png", "second.png"]))
+    }
+
+    @Test("A 6.1 caption's Mochi details list each input image")
+    func mochiLineCaptionDetails() throws {
+        let caption = """
+            Metadata Version: 2
+            Include in Image: a cube
+            Engine: coreml
+            Model Key: example-model
+            ControlNet Image: edges.png
+            Input Images: first, one.png
+            Input Images: second.png
+            Generator: Mochi Diffusion 6.1.2
+            """
+        let (interpretation, payloads) = try #require(legacyInterpretation(caption: caption))
+
+        #expect(
+            MochiGenerationDetails(interpretation, payloads: payloads)
+                == MochiGenerationDetails(
+                    engine: "coreml", modelKey: "example-model", controlNetImage: "edges.png",
+                    inputImages: ["first, one.png", "second.png"]))
+    }
+
+    @Test("A native record's Mochi details are its own, and other formats have none")
+    func nativeDetails() throws {
+        let details = MochiGenerationDetails(
+            engine: "iris", modelKey: "flux-klein", inputImages: ["cat.png", "", "dog.png"])
+        let snapshot = MochiGenerationSnapshot(
+            producer: MetadataProducer(name: "Mochi Diffusion", version: "6.2"),
+            generation: GenerationRecord(positivePrompt: "a fox", steps: 4, seed: "9"),
+            details: details)
+        let image = try PNGMetadataWriter.write(
+            PNGMetadataPayloads(
+                nativeXMPPacket: MochiNativeCodec.encodeXMPPacket(snapshot),
+                parameters: "a fox\nSteps: 4, Seed: 9, Size: 8x8"),
+            into: PNGTestImage.make(width: 8, height: 8, chunks: []),
+            replacingExistingRecords: false)
+
+        let inspection = try MetadataInspector.inspect(image)
+        let native = try #require(inspection.interpretations.first { $0.format == .mochiDiffusion })
+        let compatible = try #require(inspection.interpretations.first { $0.format == .automatic1111 })
+
+        #expect(MochiGenerationDetails(native, payloads: inspection.payloads) == details)
+        #expect(MochiGenerationDetails(compatible, payloads: inspection.payloads) == nil)
     }
 
     @Test("Mochi legacy JPEG accepts ImageIO XMP packet wrappers")

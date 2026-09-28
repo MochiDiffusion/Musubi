@@ -48,6 +48,8 @@ may include source-breaking API refinements and will be called out here.
 - `MetadataFormat.mochiDiffusion` for native records found during inspection.
 - `PNGMetadataWriter` inserts or replaces the `parameters` chunk and the native
   XMP chunk, and copies all other chunks and pixel data exactly.
+- `MochiGenerationDetails.init?(_:payloads:)` reads the Mochi details of a
+  native record or a released Mochi caption.
 
 ## 0.1.1 - 2026-09-22
 

@@ -112,7 +112,8 @@ property, matched by namespace URI in element or attribute form. A record with
 an unsupported version, a repeated JSON key or a wrong value type produces a
 diagnostic and no interpretation, so a compatibility interpretation in the
 same image stays readable. Mochi-specific details appear as parameters in the
-normalized record. `MochiNativeCodec` also returns them as typed values.
+normalized record. `MochiGenerationDetails(_:payloads:)` returns them as typed
+values for a native record or a released caption.
 
 ### Mochi Diffusion legacy
 
@@ -145,10 +146,10 @@ appear in a public fixture corpus without explicit permission.
 
 The metadata wire probe checks written images with pinned AUTOMATIC1111 and
 Civitai readers. Its fixtures are tiny, neutral synthetic images, each paired
-with hand-reviewed expectations; Mochi Diffusion writes its own fixtures the
-same way. [Tools/MetadataWireProbe](../Tools/MetadataWireProbe/README.md)
-describes how to run it, and the
-[wire contract](MetadataWireContract.md#evidence) records the results.
+with hand-reviewed expectations.
+[Tools/MetadataWireProbe](../Tools/MetadataWireProbe/README.md) describes how
+to run it, and the [wire contract](MetadataWireContract.md#evidence) records the
+results.
 
 ## Important 0.1 limitations
 
