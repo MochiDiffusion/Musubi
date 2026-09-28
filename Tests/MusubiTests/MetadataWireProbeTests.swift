@@ -108,6 +108,59 @@ struct MetadataWireProbeTests {
                 civitai: diffusionCivitai.merging([
                     "raw.prompt": "a café, 猫 🐈\nsecond line: \"blue\" \\ path", "raw.Model": "café, \"猫\"",
                 ]) { $1 })),
+        // The sampler and schedule labels Mochi Diffusion writes for its engines.
+        .init(
+            name: "dpm-karras",
+            generation: generation(seed: "4294967295") {
+                $0.sampler = "DPM++ 2M"
+                $0.scheduler = "Karras"
+            },
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a red cube", "Seed": "4294967295", "Sampler": "DPM++ 2M", "Schedule type": "Karras",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a red cube", "raw.seed": 4_294_967_295, "raw.sampler": "DPM++ 2M",
+                    "civitai.generation.scheduler": "karras",
+                ]) { $1 })),
+        .init(
+            name: "dpm-linspace",
+            generation: generation {
+                $0.sampler = "DPM++ 2M"
+                $0.scheduler = "Linspace"
+            },
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a red cube", "Sampler": "DPM++ 2M", "Schedule type": "Linspace",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a red cube", "raw.sampler": "DPM++ 2M", "civitai.generation.scheduler": "linspace",
+                ]) { $1 })),
+        .init(
+            name: "plms",
+            generation: generation { $0.sampler = "PLMS" },
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a red cube", "Sampler": "PLMS", "Schedule type": "Automatic",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a red cube", "raw.sampler": "PLMS", "civitai.generation.scheduler": nil,
+                ]) { $1 })),
+        // Flow matching has no AUTOMATIC1111 sampler name, and a model without a
+        // negative prompt records none.
+        .init(
+            name: "flow-match",
+            generation: generation {
+                $0.sampler = "Flow Match Euler Discrete"
+                $0.negativePrompt = nil
+            },
+            readers: ReaderExpectations(
+                a1111: diffusionA1111.merging([
+                    "Prompt": "a red cube", "Sampler": "Flow Match Euler Discrete", "Negative prompt": "",
+                ]) { $1 },
+                civitai: diffusionCivitai.merging([
+                    "raw.prompt": "a red cube", "raw.sampler": "Flow Match Euler Discrete", "raw.negativePrompt": nil,
+                ]) { $1 })),
         // Hosted images without Steps are not recognized by the Civitai reader.
         .init(
             name: "hosted", generation: hosted, engine: "openai",

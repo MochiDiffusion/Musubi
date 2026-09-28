@@ -126,6 +126,7 @@ The pinned-reader probes establish these boundaries:
 | Only Model/Size | Settings line becomes prompt text | Not recognized |
 | Positive prompt containing Negative prompt/Steps lines | Prompt split; final real Steps retained | Prompt split; earlier false Steps selected |
 | Hashes and Civitai resource extension | Standard fields and quoted LoRA hash retained | Hashes, synthetic version ID and weight extracted |
+| Mochi's labels: DPM++ 2M with Karras or Linspace, PLMS, Flow Match Euler Discrete | Sampler and schedule retained | Sampler retained; Karras and Linspace read as the scheduler |
 
 A1111 requires at least three recognizable pairs on its final details line.
 Civitai's detector requires `Steps: ` and selects a Steps-prefixed line. Genuine
@@ -223,15 +224,10 @@ is pinned by npm integrity, not asserted to equal a particular GitHub revision.
 Each fixture's `.expected.json` states what both readers must parse, so the same
 readers check any fixture directory.
 
-Mochi Diffusion writes its own fixtures through its generation and export
-paths: Core ML text-to-image, image-to-image with ControlNet and SD3; Iris with
-reference images; a sparse hosted record; a Unicode prompt; a prompt with
-section markers; and released 6.0 JPEG, 6.1.2 HEIC and foreign JPEG images
-converted to PNG. Its `scripts/external_readers.sh` runs these readers against
-them. The results match the table above: complete records are read by both, the
-hosted record only by A1111, and the marker prompt carries no compatibility
-text. Mochi records a model by name only, so the Civitai reader identifies a
-checkpoint without a hash.
+Mochi Diffusion's tests pin the exact AUTOMATIC1111 text each of its engines
+and conversions writes. The fixtures above cover every sampler and schedule
+label in that text. Mochi records a model by name only, so the Civitai reader
+identifies a checkpoint without a hash.
 
 A live upload was checked once, on 2026-09-28, with Core ML and Iris PNGs from
 Mochi Diffusion's development build at commit `2bbbed9`. Civitai's upload
