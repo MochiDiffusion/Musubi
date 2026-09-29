@@ -268,7 +268,7 @@ struct MetadataWireProbeTests {
             if type != .heic {
                 let inspection = try MetadataInspector.inspect(bytes)
                 let xmp = try #require(inspection.payloads.first { $0.kind == .xmp })
-                let rawMetadata = try #require(CGImageMetadataCreateFromXMPData(xmp.data as CFData))
+                let rawMetadata = try #require(imageIOMetadata(fromXMPPacket: xmp.data))
                 #expect(
                     CGImageMetadataCopyStringValueWithPath(rawMetadata, nil, Self.nativePath as CFString) as String?
                         == native)

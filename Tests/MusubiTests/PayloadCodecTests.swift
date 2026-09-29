@@ -395,7 +395,7 @@ struct PayloadCodecTests {
             producer: Self.producer, generation: Self.diffusion, details: Self.details)
         let packet = try MochiNativeCodec.encodeXMPPacket(snapshot)
 
-        let metadata = try #require(CGImageMetadataCreateFromXMPData(Data(packet.utf8) as CFData))
+        let metadata = try #require(imageIOMetadata(fromXMPPacket: Data(packet.utf8)))
         let value = CGImageMetadataCopyStringValueWithPath(metadata, nil, "mochi:Generation" as CFString)
 
         #expect(value as String? == (try MochiNativeCodec.encodeJSON(snapshot)))
@@ -416,4 +416,18 @@ struct PayloadCodecTests {
 
         #expect(try MochiNativeCodec.decodeXMPPacket(String(decoding: packet, as: UTF8.self)) == snapshot)
     }
+}
+
+/// Parses `packet` with `CGImageMetadataCreateFromXMPData`.
+///
+/// On macOS 15 that function returns nil for data wrapped in `<?xpacket?>`
+/// processing instructions, although ImageIO's image readers accept the same
+/// wrapped packet inside a file. Only the `x:xmpmeta` element is passed, which
+/// every supported macOS parses.
+func imageIOMetadata(fromXMPPacket packet: Data) -> CGImageMetadata? {
+    let text = String(decoding: packet, as: UTF8.self)
+    guard let start = text.range(of: "<x:xmpmeta"), let end = text.range(of: "</x:xmpmeta>") else {
+        return CGImageMetadataCreateFromXMPData(packet as CFData)
+    }
+    return CGImageMetadataCreateFromXMPData(Data(text[start.lowerBound..<end.upperBound].utf8) as CFData)
 }
