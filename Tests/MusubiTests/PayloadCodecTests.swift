@@ -242,6 +242,31 @@ struct PayloadCodecTests {
         #expect(try MochiNativeCodec.decodeXMPPacket(packet) == snapshot)
     }
 
+    @Test("LoRA names and weights are read from the native record, not the compatibility text")
+    func nativeLoRAs() throws {
+        let loras = [
+            GenerationResource(kind: .lora, name: "style", weight: 0.8),
+            GenerationResource(kind: .lora, name: "detail", weight: -0.5),
+            GenerationResource(kind: .lora, name: "unweighted"),
+        ]
+        let generation = GenerationRecord(positivePrompt: "a red cube", steps: 8, seed: "42", resources: loras)
+        let xmp = try MochiNativeCodec.encodeXMPPacket(
+            MochiGenerationSnapshot(producer: Self.producer, generation: generation))
+        let parameters = try #require(A1111ParametersEncoder.encode(generation, producer: Self.producer).text)
+
+        let result = MetadataInspector.interpret([
+            EmbeddedMetadataPayload(kind: .xmp, data: Data(xmp.utf8), text: xmp),
+            EmbeddedMetadataPayload(
+                kind: .pngText, keyword: "parameters", data: Data(parameters.utf8), text: parameters),
+        ])
+
+        #expect(result.selection == .selected(GenerationReference(interpretation: 0, generation: 0)))
+        let selected = try #require(result.interpretations.first)
+        #expect(selected.format == .mochiDiffusion)
+        #expect(selected.generations.first?.resources == loras)
+        #expect(selected.generations.first?.positivePrompt == "a red cube")
+    }
+
     @Test("Empty values stay distinct from absent ones")
     func emptyIsNotAbsent() throws {
         let empty = MochiGenerationSnapshot(
