@@ -51,6 +51,13 @@ may include source-breaking API refinements and will be called out here.
 - `MochiGenerationDetails.init?(_:payloads:)` reads the Mochi details of a
   native record or a released Mochi caption.
 
+### Fixed
+
+- An Exif `UserComment` with an ASCII or Unicode character code no longer
+  crashes inspection when its text is blank padding or shorter than 9 bytes,
+  and trailing padding is trimmed from the end of the comment rather than
+  8 bytes before it.
+
 ## 0.1.1 - 2026-09-22
 
 ### Fixed

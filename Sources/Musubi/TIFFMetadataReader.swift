@@ -183,16 +183,18 @@ enum TIFFMetadataReader {
     }
 }
 
+// Comment bodies are slices that keep their parent's indices, so these work from
+// `startIndex` and `endIndex` rather than from zero and `count`.
 extension Data {
     fileprivate func trimmingTrailingNulls() -> Data {
-        var end = count
-        while end > 0, self[end - 1] == 0 { end -= 1 }
-        return prefix(end)
+        var end = endIndex
+        while end > startIndex, self[end - 1] == 0 { end -= 1 }
+        return self[startIndex..<end]
     }
 
     fileprivate func trimmingTrailingNullPairs() -> Data {
-        var end = count
-        while end >= 2, self[end - 1] == 0, self[end - 2] == 0 { end -= 2 }
-        return prefix(end)
+        var end = endIndex
+        while end - startIndex >= 2, self[end - 1] == 0, self[end - 2] == 0 { end -= 2 }
+        return self[startIndex..<end]
     }
 }

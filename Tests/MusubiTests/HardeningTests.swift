@@ -315,6 +315,31 @@ struct HardeningTests {
         #expect(inspection.payloads.filter { $0.keyword == "UserComment" }.count == 1)
     }
 
+    /// Comment values after their 8-byte character code, and the text each should read as.
+    private static let userComments: [(value: Data, text: String)] = [
+        // Cameras and editors often write a blank comment as a header and nothing but padding.
+        (Data("ASCII\0\0\0".utf8) + Data(repeating: 0, count: 64), ""),
+        (Data("ASCII\0\0\0".utf8) + Data("hi".utf8), "hi"),
+        (Data("ASCII\0\0\0".utf8) + Data("a longer comment\0\0\0".utf8), "a longer comment"),
+        (Data("UNICODE\0".utf8) + Data(repeating: 0, count: 64), ""),
+        (Data("UNICODE\0".utf8) + Data([0, 0x41, 0, 0x42, 0, 0, 0, 0]), "AB"),
+    ]
+
+    @Test("UserComment trailing nulls are trimmed within the comment body", arguments: userComments)
+    func userCommentTrailingNulls(value: Data, expected: String) throws {
+        var tiff = Data("MM".utf8) + bigEndian(UInt16(42)) + bigEndian(UInt32(8)) + bigEndian(UInt16(1))
+        tiff +=
+            bigEndian(UInt16(0x9286)) + bigEndian(UInt16(7)) + bigEndian(UInt32(value.count))
+            + bigEndian(UInt32(8 + 2 + 12 + 4))
+        tiff += bigEndian(UInt32(0)) + value
+        let image = PNGTestImage.make(
+            width: 1, height: 1, chunks: [PNGTestImage.Chunk(type: "eXIf", data: tiff, corruptCRC: false)])
+
+        let inspection = try MetadataInspector.inspect(image)
+
+        #expect(inspection.payloads.first { $0.keyword == "UserComment" }?.text == expected)
+    }
+
     // MARK: - Review gaps
 
     @Test("interpret(_:) applies the payload count limit to caller payloads")
