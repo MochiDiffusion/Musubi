@@ -10,7 +10,7 @@ every interpretation instead of discarding all but one.
 
 ## Supported metadata
 
-Musubi 0.1 reads:
+Musubi 0.2 reads:
 
 | Source | PNG | JPEG | Notes |
 | --- | :---: | :---: | --- |
@@ -97,7 +97,7 @@ Xcode toolchain or prefix the command with an appropriate `DEVELOPER_DIR`.
 - Treat container parsing and generator-specific decoding as separate layers.
 - Keep parsing local, synchronous, and safe for untrusted image files.
 
-The public API is intentionally small in 0.1 and may evolve before 1.0.
+The public API is intentionally small in 0.2 and may evolve before 1.0.
 
 ## Documentation
 

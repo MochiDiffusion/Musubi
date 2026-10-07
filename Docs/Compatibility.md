@@ -1,7 +1,7 @@
 # Compatibility and testing
 
 Generation metadata formats are evolving conventions rather than one common
-standard. The tables below describe Musubi 0.1's tested behavior, not universal
+standard. The tables below describe Musubi 0.2's tested behavior, not universal
 support for every image an application can produce.
 
 ## Container support
@@ -151,7 +151,7 @@ with hand-reviewed expectations.
 to run it, and the [wire contract](MetadataWireContract.md#evidence) records the
 results.
 
-## Important 0.1 limitations
+## Important 0.2 limitations
 
 - PNG writing only, and only of the `parameters` chunk and an XMP chunk that
   holds Mochi's native record and at most its `dc:description`

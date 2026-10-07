@@ -3,7 +3,7 @@
 Musubi follows [Semantic Versioning](https://semver.org/). Changes before 1.0
 may include source-breaking API refinements and will be called out here.
 
-## Unreleased
+## 0.2.0 - 2026-10-07
 
 ### Changed
 
